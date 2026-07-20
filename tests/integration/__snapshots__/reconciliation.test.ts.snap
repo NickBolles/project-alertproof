@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`reconciliation, writeback, and durable dedupe retention > writes deterministic metafield/note summaries and retries independently 1`] = `
+{
+  "metafieldValue": "{"alerts":1,"delivered":1,"bounced":0,"lastUpdate":"2026-07-20T12:15:30.000Z"}",
+  "note": "AlertProof: 1/1 deliveries delivered (email x1)",
+}
+`;

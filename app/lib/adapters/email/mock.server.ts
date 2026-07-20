@@ -1,15 +1,16 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type {
-  EmailMessage,
-  EmailProvider,
+  AlertChannelAdapter,
+  AlertMessage,
   OutboxWriter,
   ProviderSendResult,
   ProviderStatusEvent,
   StatusWebhook,
 } from "../../ports";
 
-export class MockEmailProvider implements EmailProvider {
+export class MockEmailProvider implements AlertChannelAdapter {
   readonly kind = "mock" as const;
+  readonly channelType = "email" as const;
 
   constructor(
     private readonly outbox: OutboxWriter,
@@ -17,17 +18,14 @@ export class MockEmailProvider implements EmailProvider {
     private readonly statusSecret?: string,
   ) {}
 
-  async send(message: EmailMessage): Promise<ProviderSendResult> {
+  async send(message: AlertMessage): Promise<ProviderSendResult> {
     const providerMessageId = `mock-email-${randomUUID()}`;
     await this.outbox.write({
-      channel: "EMAIL",
-      to: message.to,
+      channel: "email",
+      to: message.destination,
       deliveryId: message.deliveryId,
-      payload: { ...message, providerMessageId },
+      payload: { ...message.payload, providerMessageId },
     });
-    console.info(
-      `[mock:email] accepted ${message.deliveryId} for ${message.to}`,
-    );
     return { providerMessageId, acceptedAt: this.clock.now() };
   }
 
@@ -35,11 +33,10 @@ export class MockEmailProvider implements EmailProvider {
     if (!this.statusSecret) return true;
     const provided =
       webhook.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
-    const expectedBuffer = Buffer.from(this.statusSecret);
-    const providedBuffer = Buffer.from(provided);
+    const expected = Buffer.from(this.statusSecret);
+    const actual = Buffer.from(provided);
     return (
-      expectedBuffer.length === providedBuffer.length &&
-      timingSafeEqual(expectedBuffer, providedBuffer)
+      expected.length === actual.length && timingSafeEqual(expected, actual)
     );
   }
 

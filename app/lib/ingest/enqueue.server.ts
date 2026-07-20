@@ -1,6 +1,6 @@
 import { EventSource, type Prisma, type PrismaClient } from "@prisma/client";
 import prisma from "../../db.server";
-import { canonicalizeTopic, extractOrderId } from "./topics";
+import { canonicalizeTopic, extractOrderId, extractResourceId } from "./topics";
 
 export type EnqueueWebhookInput = {
   shopDomain: string;
@@ -14,6 +14,7 @@ export type EnqueueWebhookInput = {
 export type EnqueueWebhookResult = {
   inserted: boolean;
   orderId: string | null;
+  resourceId: string | null;
   topic: string;
 };
 
@@ -23,6 +24,7 @@ export async function enqueueWebhook(
 ): Promise<EnqueueWebhookResult> {
   const topic = canonicalizeTopic(input.topic);
   const orderId = extractOrderId(topic, input.payload);
+  const resourceId = extractResourceId(topic, input.payload);
   const receivedAt = input.receivedAt ?? new Date();
   const trialEndsAt = new Date(receivedAt);
   trialEndsAt.setUTCDate(trialEndsAt.getUTCDate() + 14);
@@ -48,6 +50,7 @@ export async function enqueueWebhook(
           shopifyWebhookId: input.shopifyWebhookId,
           source: input.source ?? EventSource.WEBHOOK,
           orderId,
+          resourceId,
           payload: input.payload as Prisma.InputJsonObject,
           receivedAt,
           nextAttemptAt: receivedAt,
@@ -58,5 +61,5 @@ export async function enqueueWebhook(
     return result.count === 1;
   });
 
-  return { inserted, orderId, topic };
+  return { inserted, orderId, resourceId, topic };
 }

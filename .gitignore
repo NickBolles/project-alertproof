@@ -29,3 +29,4 @@ postgresql-binaries.zip
 .nuget-packages/
 .nuget.config
 prisma/dev.sqlite*
+var/outbox/

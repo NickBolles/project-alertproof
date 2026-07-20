@@ -1,14 +1,29 @@
+import { randomUUID } from "node:crypto";
 import type {
-  ChatWebhookMessage,
-  ChatWebhookProvider,
+  AlertChannelAdapter,
+  AlertMessage,
   ProviderSendResult,
 } from "../../ports";
-import { NotConfiguredError } from "../errors";
 
-export class DiscordWebhookProvider implements ChatWebhookProvider {
+export class DiscordWebhookProvider implements AlertChannelAdapter {
   readonly kind = "discord" as const;
+  readonly channelType = "discord" as const;
 
-  postToWebhookUrl(_message: ChatWebhookMessage): Promise<ProviderSendResult> {
-    throw new NotConfiguredError("DiscordWebhookProvider");
+  constructor(private readonly fetcher: typeof fetch = fetch) {}
+
+  async send(message: AlertMessage): Promise<ProviderSendResult> {
+    const response = await this.fetcher(message.destination, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(message.payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Discord webhook failed with HTTP ${response.status}`);
+    }
+    return {
+      providerMessageId:
+        response.headers.get("x-ratelimit-bucket") ?? `discord-${randomUUID()}`,
+      acceptedAt: new Date(),
+    };
   }
 }

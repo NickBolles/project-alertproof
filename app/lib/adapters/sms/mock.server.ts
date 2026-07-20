@@ -1,36 +1,38 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AlertChannelAdapter,
+  AlertMessage,
   OutboxWriter,
   ProviderSendResult,
   ProviderStatusEvent,
-  SmsMessage,
-  SmsProvider,
   StatusWebhook,
 } from "../../ports";
 
-export class MockSmsProvider implements SmsProvider {
+export class MockSmsProvider implements AlertChannelAdapter {
   readonly kind = "mock" as const;
+  readonly channelType = "sms" as const;
 
   constructor(
     private readonly outbox: OutboxWriter,
     private readonly clock: { now(): Date },
   ) {}
 
-  async send(message: SmsMessage): Promise<ProviderSendResult> {
+  async send(message: AlertMessage): Promise<ProviderSendResult> {
     const providerMessageId = `mock-sms-${randomUUID()}`;
     await this.outbox.write({
-      channel: "SMS",
-      to: message.to,
+      channel: "sms",
+      to: message.destination,
       deliveryId: message.deliveryId,
-      payload: { ...message, providerMessageId },
+      payload: { ...message.payload, providerMessageId },
     });
-    console.info(`[mock:sms] accepted ${message.deliveryId} for ${message.to}`);
     return { providerMessageId, acceptedAt: this.clock.now() };
   }
 
-  async parseStatusCallback(
-    webhook: StatusWebhook,
-  ): Promise<ProviderStatusEvent> {
+  async verifyStatusWebhook(): Promise<boolean> {
+    return true;
+  }
+
+  async parseStatusEvent(webhook: StatusWebhook): Promise<ProviderStatusEvent> {
     const value = JSON.parse(webhook.body) as {
       providerMessageId: string;
       status?: ProviderStatusEvent["status"];
@@ -39,7 +41,7 @@ export class MockSmsProvider implements SmsProvider {
     return {
       provider: "mock",
       providerMessageId: value.providerMessageId,
-      status: value.status ?? "DELIVERED",
+      status: value.status ?? "delivered",
       occurredAt: value.occurredAt
         ? new Date(value.occurredAt)
         : this.clock.now(),

@@ -1,3 +1,5 @@
+import { appendFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 import { Prisma } from "@prisma/client";
 import prisma from "../../db.server";
 import type { MockOutboxRecord, OutboxWriter, ShopPlanStore } from "../ports";
@@ -8,15 +10,31 @@ function toJson(value: unknown): Prisma.InputJsonValue {
 }
 
 export class PrismaOutboxWriter implements OutboxWriter {
+  constructor(
+    private readonly outboxRoot = path.join(process.cwd(), "var", "outbox"),
+  ) {}
+
   async write(record: MockOutboxRecord): Promise<void> {
-    await prisma.mockOutbox.create({
-      data: {
-        channel: record.channel,
-        to: record.to,
-        payload: toJson(record.payload),
-        deliveryId: record.deliveryId,
-      },
-    });
+    await Promise.all([
+      prisma.mockOutbox.create({
+        data: {
+          channel: record.channel,
+          to: record.to,
+          payload: toJson(record.payload),
+          deliveryId: record.deliveryId,
+        },
+      }),
+      this.appendJsonLine(record),
+    ]);
+  }
+
+  private async appendJsonLine(record: MockOutboxRecord): Promise<void> {
+    await mkdir(this.outboxRoot, { recursive: true });
+    await appendFile(
+      path.join(this.outboxRoot, `${record.channel}.jsonl`),
+      `${JSON.stringify({ ...record, recordedAt: new Date().toISOString() })}\n`,
+      "utf8",
+    );
   }
 }
 

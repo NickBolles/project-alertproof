@@ -11,6 +11,7 @@ process.env.ALERTPROOF_FORCE_MOCKS ??= "1";
 export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
+    fileParallelism: false,
     restoreMocks: true,
     clearMocks: true,
   },

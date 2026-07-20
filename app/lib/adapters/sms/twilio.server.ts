@@ -1,25 +1,32 @@
 import type {
+  AlertChannelAdapter,
+  AlertMessage,
   ProviderSendResult,
   ProviderStatusEvent,
-  SmsMessage,
-  SmsProvider,
   StatusWebhook,
 } from "../../ports";
 import { NotConfiguredError } from "../errors";
 
-export class TwilioSmsProvider implements SmsProvider {
+/** SMS is intentionally plan-gated for a later phase; this preserves the canonical port. */
+export class TwilioSmsProvider implements AlertChannelAdapter {
   readonly kind = "twilio" as const;
+  readonly channelType = "sms" as const;
+
   constructor(
     readonly accountSid: string,
     readonly authToken: string,
     readonly fromNumber: string,
   ) {}
 
-  send(_message: SmsMessage): Promise<ProviderSendResult> {
-    throw new NotConfiguredError("TwilioSmsProvider");
+  send(_message: AlertMessage): Promise<ProviderSendResult> {
+    throw new NotConfiguredError("TwilioSmsProvider (available with Pro)");
   }
 
-  parseStatusCallback(_webhook: StatusWebhook): Promise<ProviderStatusEvent> {
-    throw new NotConfiguredError("TwilioSmsProvider");
+  verifyStatusWebhook(): Promise<boolean> {
+    throw new NotConfiguredError("TwilioSmsProvider (available with Pro)");
+  }
+
+  parseStatusEvent(_webhook: StatusWebhook): Promise<ProviderStatusEvent> {
+    throw new NotConfiguredError("TwilioSmsProvider (available with Pro)");
   }
 }

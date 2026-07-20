@@ -1,14 +1,29 @@
+import { randomUUID } from "node:crypto";
 import type {
-  ChatWebhookMessage,
-  ChatWebhookProvider,
+  AlertChannelAdapter,
+  AlertMessage,
   ProviderSendResult,
 } from "../../ports";
-import { NotConfiguredError } from "../errors";
 
-export class SlackWebhookProvider implements ChatWebhookProvider {
+export class SlackWebhookProvider implements AlertChannelAdapter {
   readonly kind = "slack" as const;
+  readonly channelType = "slack" as const;
 
-  postToWebhookUrl(_message: ChatWebhookMessage): Promise<ProviderSendResult> {
-    throw new NotConfiguredError("SlackWebhookProvider");
+  constructor(private readonly fetcher: typeof fetch = fetch) {}
+
+  async send(message: AlertMessage): Promise<ProviderSendResult> {
+    const response = await this.fetcher(message.destination, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(message.payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Slack webhook failed with HTTP ${response.status}`);
+    }
+    return {
+      providerMessageId:
+        response.headers.get("x-slack-request-id") ?? `slack-${randomUUID()}`,
+      acceptedAt: new Date(),
+    };
   }
 }

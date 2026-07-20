@@ -56,6 +56,7 @@ model WebhookEvent {
   shopifyWebhookId String      @unique
   source           EventSource @default(WEBHOOK)
   orderId          String?
+  resourceId       String?
   payload          Json?
   status           EventStatus @default(PENDING)
   attempts         Int         @default(0)
@@ -70,6 +71,7 @@ model WebhookEvent {
 
   @@index([status, nextAttemptAt])
   @@index([shopDomain, topic, orderId])
+  @@index([shopDomain, topic, orderId, resourceId])
   @@index([shopDomain, topic, receivedAt])
 }
 
@@ -123,27 +125,33 @@ model RuleRecipient {
 }
 
 model Alert {
-  id             String        @id @default(cuid())
-  shopId         String
-  kind           AlertKind     @default(RULE)
-  ruleId         String?
-  webhookEventId String?
-  dedupeKey      String
-  orderId        String?
-  orderName      String?
-  orderValue     Decimal?      @db.Decimal(18, 2)
-  firedAt        DateTime      @default(now())
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  rule           Rule?         @relation(fields: [ruleId], references: [id], onDelete: SetNull)
-  webhookEvent   WebhookEvent? @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
-  deliveries     Delivery[]
+  id                String        @id @default(cuid())
+  shopId            String
+  kind              AlertKind     @default(RULE)
+  ruleId            String?
+  webhookEventId    String?
+  dedupeKey         String
+  orderId           String?
+  orderName         String?
+  orderValue        Decimal?      @db.Decimal(18, 2)
+  firedAt           DateTime      @default(now())
+  writebackPending  Boolean       @default(true)
+  writebackAttempts Int           @default(0)
+  writebackNextAt   DateTime      @default(now())
+  writebackAt       DateTime?
+  writebackError    String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  shop              Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  rule              Rule?         @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  webhookEvent      WebhookEvent? @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
+  deliveries        Delivery[]
 
   @@unique([webhookEventId, ruleId])
   @@unique([shopId, dedupeKey])
   @@index([shopId, orderId])
   @@index([ruleId])
+  @@index([writebackPending, writebackNextAt])
 }
 
 model Delivery {
@@ -151,10 +159,13 @@ model Delivery {
   alertId           String
   recipientId       String
   channel           Channel
+  messageKey        String
+  destination       String
   status            DeliveryStatus @default(PENDING)
   providerMessageId String?        @unique
   providerDetail    Json?
   attempts          Int            @default(0)
+  nextAttemptAt     DateTime       @default(now())
   isEscalation      Boolean        @default(false)
   escalatedFromId   String?        @unique
   sentAt            DateTime?
@@ -163,10 +174,12 @@ model Delivery {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   alert             Alert          @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  recipient         Recipient      @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  recipient         Recipient      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
   escalatedFrom     Delivery?      @relation("DeliveryEscalation", fields: [escalatedFromId], references: [id], onDelete: SetNull)
   escalation        Delivery?      @relation("DeliveryEscalation")
 
+  @@unique([messageKey, channel, destination])
+  @@index([status, nextAttemptAt])
   @@index([status, sentAt])
   @@index([alertId])
   @@index([recipientId])

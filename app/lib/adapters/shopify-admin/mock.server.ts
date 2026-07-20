@@ -7,6 +7,12 @@ export class MockShopifyAdmin implements ShopifyAdmin {
   readonly kind = "mock" as const;
   readonly metafieldWrites: MetafieldWrite[] = [];
   readonly noteWrites: NoteWrite[] = [];
+  readonly orderQueries: Array<{
+    shopDomain: string;
+    updatedSince: Date;
+    cursor?: string;
+    limit?: number;
+  }> = [];
   private readonly orders = new Map<string, ShopifyOrder[]>();
   private readonly products = new Map<
     string,
@@ -45,6 +51,7 @@ export class MockShopifyAdmin implements ShopifyAdmin {
     cursor?: string;
     limit?: number;
   }): Promise<OrdersPage> {
+    this.orderQueries.push(structuredClone(input));
     const offset = Number(input.cursor ?? 0);
     const limit = input.limit ?? 50;
     const matching = (this.orders.get(input.shopDomain) ?? [])

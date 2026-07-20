@@ -19,16 +19,20 @@ describe("mock adapters", () => {
     );
     const result = await provider.send({
       deliveryId: "delivery-1",
-      to: "ops@example.test",
-      from: "alerts@alertproof.test",
-      subject: "Order #1001",
-      text: "A new order arrived",
+      messageKey: "message-1",
+      channelType: "email",
+      destination: "ops@example.test",
+      payload: {
+        from: "alerts@alertproof.test",
+        subject: "Order #1001",
+        text: "A new order arrived",
+      },
     });
     expect(result.providerMessageId).toMatch(/^mock-email-/);
     expect(result.acceptedAt).toEqual(now);
     expect(outbox.records).toHaveLength(1);
     expect(outbox.records[0]).toMatchObject({
-      channel: "EMAIL",
+      channel: "email",
       to: "ops@example.test",
       deliveryId: "delivery-1",
     });
@@ -37,29 +41,31 @@ describe("mock adapters", () => {
   it("records chat and SMS sends and parses a synthetic SMS receipt", async () => {
     const outbox = new MemoryOutbox();
     const clock = new FakeClock(now);
-    const chat = new MockChatProvider(outbox, clock);
+    const chat = new MockChatProvider("slack", outbox, clock);
     const sms = new MockSmsProvider(outbox, clock);
-    await chat.postToWebhookUrl({
+    await chat.send({
       deliveryId: "delivery-2",
-      service: "slack",
-      webhookUrl: "mock://ops",
+      messageKey: "message-2",
+      channelType: "slack",
+      destination: "mock://ops",
       payload: { text: "New order" },
     });
     const sent = await sms.send({
       deliveryId: "delivery-3",
-      to: "+15555550100",
-      from: "+15555550123",
-      body: "New order",
+      messageKey: "message-3",
+      channelType: "sms",
+      destination: "+15555550100",
+      payload: { from: "+15555550123", body: "New order" },
     });
-    const receipt = await sms.parseStatusCallback({
+    const receipt = await sms.parseStatusEvent({
       headers: {},
       body: JSON.stringify({ providerMessageId: sent.providerMessageId }),
     });
     expect(outbox.records.map((record) => record.channel)).toEqual([
-      "SLACK",
-      "SMS",
+      "slack",
+      "sms",
     ]);
-    expect(receipt.status).toBe("DELIVERED");
+    expect(receipt.status).toBe("delivered");
   });
 
   it("serves seeded Shopify orders and records writebacks", async () => {

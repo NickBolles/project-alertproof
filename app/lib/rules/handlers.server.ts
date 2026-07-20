@@ -71,19 +71,19 @@ async function collectionIdsForProducts(input: {
   return [...new Set(memberships.flat())];
 }
 
-function recipientHasChannel(
+function recipientDestination(
   recipient: RuleWithRecipients["recipients"][number]["recipient"],
   channel: Channel,
-): boolean {
+): string | null {
   switch (channel) {
     case Channel.EMAIL:
-      return Boolean(recipient.email);
+      return recipient.email;
     case Channel.SLACK:
-      return Boolean(recipient.slackWebhookUrlEnc);
+      return recipient.slackWebhookUrlEnc;
     case Channel.DISCORD:
-      return Boolean(recipient.discordWebhookUrlEnc);
+      return recipient.discordWebhookUrlEnc;
     case Channel.SMS:
-      return Boolean(recipient.phoneE164);
+      return recipient.phoneE164;
   }
 }
 
@@ -101,6 +101,7 @@ async function createAlerts(
   const summary = orderSummary(input.facts);
   for (const rule of input.rules) {
     const alertId = randomUUID();
+    const messageKey = dedupeKeyForRule(rule, input.facts);
     const result = await tx.alert.createMany({
       data: [
         {
@@ -108,7 +109,7 @@ async function createAlerts(
           shopId: input.shopId,
           ruleId: rule.id,
           webhookEventId: input.event.id,
-          dedupeKey: dedupeKeyForRule(rule, input.facts),
+          dedupeKey: messageKey,
           orderId: summary.orderId,
           orderName: summary.orderName,
           orderValue: summary.orderValue,
@@ -122,11 +123,14 @@ async function createAlerts(
     const deliveries = rule.recipients.flatMap(({ recipient, channels }) =>
       channels.map((channel) => {
         const access = channelAccessForPlan(input.shopPlan, channel);
-        const configured = recipientHasChannel(recipient, channel);
+        const destination = recipientDestination(recipient, channel);
+        const configured = Boolean(destination);
         return {
           alertId,
           recipientId: recipient.id,
           channel,
+          messageKey,
+          destination: destination ?? `unconfigured:${recipient.id}`,
           status:
             configured && access.allowed
               ? DeliveryStatus.PENDING

@@ -1,7 +1,34 @@
-export type Channel = "EMAIL" | "SLACK" | "DISCORD" | "SMS";
+/** Canonical portable alerts contract. Persistence maps these values to Prisma enums. */
+export type ChannelType = "email" | "slack" | "discord" | "sms";
+export type DeliveryStatus =
+  | "queued"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "bounced"
+  | "deferred"
+  | "failed"
+  | "skipped";
+
+export const DELIVERY_STATUS_TO_PRISMA = {
+  queued: "PENDING",
+  sending: "SENDING",
+  sent: "SENT",
+  delivered: "DELIVERED",
+  bounced: "BOUNCED",
+  deferred: "DEFERRED",
+  failed: "FAILED",
+  skipped: "SKIPPED",
+} as const satisfies Record<DeliveryStatus, string>;
+
+export const CHANNEL_TYPE_TO_PRISMA = {
+  email: "EMAIL",
+  slack: "SLACK",
+  discord: "DISCORD",
+  sms: "SMS",
+} as const satisfies Record<ChannelType, string>;
+
 export type BillingPlan = "FREE" | "STANDARD" | "PRO";
-export type ProviderDeliveryStatus =
-  "SENT" | "DELIVERED" | "BOUNCED" | "DEFERRED" | "FAILED";
 
 export type ProviderSendResult = {
   providerMessageId: string;
@@ -16,53 +43,71 @@ export type StatusWebhook = {
 export type ProviderStatusEvent = {
   provider: string;
   providerMessageId: string;
-  status: ProviderDeliveryStatus;
+  status: DeliveryStatus;
   occurredAt: Date;
   detail: unknown;
 };
 
-export type EmailMessage = {
+export type AlertMessage = {
   deliveryId: string;
-  to: string;
-  from: string;
-  subject: string;
-  text: string;
-  html?: string;
-  metadata?: Record<string, string>;
-};
-
-export interface EmailProvider {
-  readonly kind: "mock" | "postmark";
-  send(message: EmailMessage): Promise<ProviderSendResult>;
-  verifyStatusWebhook(webhook: StatusWebhook): Promise<boolean>;
-  parseStatusEvent(webhook: StatusWebhook): Promise<ProviderStatusEvent>;
-}
-
-export type ChatWebhookMessage = {
-  deliveryId: string;
-  service: "slack" | "discord";
-  webhookUrl: string;
+  messageKey: string;
+  channelType: ChannelType;
+  destination: string;
   payload: Record<string, unknown>;
 };
 
-// Payload shaping occurs above this port so the mock captures the exact Slack/Discord body.
-// A mock:// URL always selects MockChatProvider even when live chat delivery is enabled.
-export interface ChatWebhookProvider {
-  readonly kind: "mock" | "slack" | "discord";
-  postToWebhookUrl(message: ChatWebhookMessage): Promise<ProviderSendResult>;
+export interface AlertChannelAdapter {
+  readonly kind: string;
+  readonly channelType: ChannelType;
+  send(message: AlertMessage): Promise<ProviderSendResult>;
+  verifyStatusWebhook?(webhook: StatusWebhook): Promise<boolean>;
+  parseStatusEvent?(webhook: StatusWebhook): Promise<ProviderStatusEvent>;
 }
 
-export type SmsMessage = {
-  deliveryId: string;
-  to: string;
-  from: string;
-  body: string;
+export type DeliveryRoute = {
+  alertId: string;
+  recipientId: string;
+  messageKey: string;
+  channelType: ChannelType;
+  destination: string;
+  enabled?: boolean;
+  skipReason?: string;
 };
 
-export interface SmsProvider {
-  readonly kind: "mock" | "twilio";
-  send(message: SmsMessage): Promise<ProviderSendResult>;
-  parseStatusCallback(webhook: StatusWebhook): Promise<ProviderStatusEvent>;
+export type DeliveryLogEntry = DeliveryRoute & {
+  id: string;
+  status: DeliveryStatus;
+  attempts: number;
+  nextAttemptAt: Date;
+  providerMessageId?: string | null;
+};
+
+export interface DeliveryLogStore {
+  record(route: DeliveryRoute): Promise<DeliveryLogEntry>;
+  claimQueued(input?: {
+    now?: Date;
+    limit?: number;
+  }): Promise<DeliveryLogEntry[]>;
+  transition(input: {
+    deliveryId: string;
+    from: DeliveryStatus;
+    to: DeliveryStatus;
+    at: Date;
+    providerMessageId?: string;
+    detail?: unknown;
+    error?: string | null;
+    nextAttemptAt?: Date;
+  }): Promise<boolean>;
+  updateStatus(event: ProviderStatusEvent): Promise<boolean>;
+}
+
+export interface AlertDispatcher {
+  dispatch(routes?: DeliveryRoute[]): Promise<{
+    recorded: number;
+    claimed: number;
+    sent: number;
+    failed: number;
+  }>;
 }
 
 export type ShopifyOrder = {
@@ -128,7 +173,7 @@ export interface Clock {
 }
 
 export type MockOutboxRecord = {
-  channel: Channel;
+  channel: ChannelType;
   to: string;
   payload: unknown;
   deliveryId?: string;

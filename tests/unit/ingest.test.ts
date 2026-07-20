@@ -62,7 +62,12 @@ describe("webhook ingest primitives", () => {
     const order: string[] = [];
     const enqueue = vi.fn(async () => {
       order.push("persisted");
-      return { inserted: true, orderId: "1", topic: "orders/create" };
+      return {
+        inserted: true,
+        orderId: "1",
+        resourceId: "1",
+        topic: "orders/create",
+      };
     });
     const kick = vi.fn(() => order.push("kicked"));
     const response = await handleShopifyWebhook(

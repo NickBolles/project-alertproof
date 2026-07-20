@@ -39,6 +39,23 @@ export function extractOrderId(
     : null;
 }
 
+export function extractResourceId(
+  topic: string,
+  payload: Record<string, unknown>,
+): string | null {
+  const canonicalTopic = canonicalizeTopic(topic);
+  const raw =
+    canonicalTopic === SHOPIFY_TOPICS.REFUNDS_CREATE ||
+    canonicalTopic === SHOPIFY_TOPICS.ORDER_TRANSACTIONS_CREATE
+      ? payload.id
+      : canonicalTopic.startsWith("orders/")
+        ? payload.id
+        : undefined;
+  return typeof raw === "string" || typeof raw === "number"
+    ? String(raw)
+    : null;
+}
+
 export type ExpectedOrderEvent = {
   topic: "orders/create" | "orders/paid" | "refunds/create";
   orderId: string;

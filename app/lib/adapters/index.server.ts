@@ -1,6 +1,7 @@
 import { getAdapterMode, env as defaultEnv, type Env } from "../env.server";
 import type {
-  ChatWebhookProvider,
+  AlertChannelAdapter,
+  ChannelType,
   Clock,
   OutboxWriter,
   ShopPlanStore,
@@ -38,37 +39,59 @@ export function createAdapters(
   const clock = dependencies.clock ?? new DateClock();
   const outbox = dependencies.outbox ?? new PrismaOutboxWriter();
   const planStore = dependencies.planStore ?? new PrismaShopPlanStore();
-  const mockChat = new MockChatProvider(outbox, clock);
+  const mockEmail = new MockEmailProvider(outbox, clock, config.CRON_SECRET);
+  const mockSms = new MockSmsProvider(outbox, clock);
+  const mockSlack = new MockChatProvider("slack", outbox, clock);
+  const mockDiscord = new MockChatProvider("discord", outbox, clock);
+  const realEmail = config.POSTMARK_API_TOKEN
+    ? new PostmarkEmailProvider(
+        config.POSTMARK_API_TOKEN,
+        config.POSTMARK_WEBHOOK_SECRET,
+      )
+    : undefined;
+  const realSms =
+    config.TWILIO_ACCOUNT_SID &&
+    config.TWILIO_AUTH_TOKEN &&
+    config.TWILIO_FROM_NUMBER
+      ? new TwilioSmsProvider(
+          config.TWILIO_ACCOUNT_SID,
+          config.TWILIO_AUTH_TOKEN,
+          config.TWILIO_FROM_NUMBER,
+        )
+      : undefined;
 
   const chatFor = (
     service: "slack" | "discord",
     webhookUrl: string,
-  ): ChatWebhookProvider => {
+  ): AlertChannelAdapter => {
     if (selectedMode.chat === "mock" || webhookUrl.startsWith("mock://"))
-      return mockChat;
+      return service === "slack" ? mockSlack : mockDiscord;
     return service === "slack"
       ? new SlackWebhookProvider()
       : new DiscordWebhookProvider();
   };
 
+  const email = selectedMode.email === "postmark" ? realEmail! : mockEmail;
+  const sms = selectedMode.sms === "twilio" ? realSms! : mockSms;
+  const channelFor = (
+    channelType: ChannelType,
+    destination: string,
+  ): AlertChannelAdapter => {
+    if (destination.startsWith("mock://")) {
+      if (channelType === "email") return mockEmail;
+      if (channelType === "sms") return mockSms;
+      return channelType === "slack" ? mockSlack : mockDiscord;
+    }
+    if (channelType === "email") return email;
+    if (channelType === "sms") return sms;
+    return chatFor(channelType, destination);
+  };
+
   return {
     mode: selectedMode,
     clock,
-    email:
-      selectedMode.email === "postmark"
-        ? new PostmarkEmailProvider(
-            config.POSTMARK_API_TOKEN!,
-            config.POSTMARK_WEBHOOK_SECRET,
-          )
-        : new MockEmailProvider(outbox, clock, config.CRON_SECRET),
-    sms:
-      selectedMode.sms === "twilio"
-        ? new TwilioSmsProvider(
-            config.TWILIO_ACCOUNT_SID!,
-            config.TWILIO_AUTH_TOKEN!,
-            config.TWILIO_FROM_NUMBER!,
-          )
-        : new MockSmsProvider(outbox, clock),
+    email,
+    sms,
     shopifyAdmin:
       selectedMode.shopifyAdmin === "shopify"
         ? new RealShopifyAdmin()
@@ -78,6 +101,7 @@ export function createAdapters(
         ? new ShopifyBillingService()
         : new MockBillingService(planStore),
     chatFor,
+    channelFor,
   };
 }
 

@@ -5,6 +5,9 @@ import {
   processPending,
   requeueDeadEvents,
 } from "../lib/ingest/processor.server";
+import { dispatchPendingDeliveries } from "../lib/delivery/dispatch.server";
+import { reconcileAllShops } from "../lib/reconcile/reconcile.server";
+import { processPendingWritebacks } from "../lib/writeback/order.server";
 
 function authorized(request: Request): boolean {
   const supplied = request.headers
@@ -25,7 +28,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   if (params.job === "dispatch") {
-    return Response.json(await processPending());
+    await processPending();
+    const delivery = await dispatchPendingDeliveries();
+    const writeback = await processPendingWritebacks();
+    return Response.json({ delivery, writeback });
+  }
+  if (params.job === "reconcile") {
+    const reconciliation = await reconcileAllShops();
+    let processed = 0;
+    let result;
+    do {
+      result = await processPending();
+      processed += result.processed;
+    } while (result.claimed > 0);
+    const delivery = await dispatchPendingDeliveries();
+    const writeback = await processPendingWritebacks();
+    return Response.json({ reconciliation, processed, delivery, writeback });
   }
   if (params.job === "requeue-dead") {
     return Response.json({ requeued: await requeueDeadEvents() });

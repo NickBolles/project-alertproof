@@ -1,30 +1,29 @@
 import { randomUUID } from "node:crypto";
 import type {
-  ChatWebhookMessage,
-  ChatWebhookProvider,
+  AlertChannelAdapter,
+  AlertMessage,
+  ChannelType,
   OutboxWriter,
   ProviderSendResult,
 } from "../../ports";
 
-export class MockChatProvider implements ChatWebhookProvider {
+export class MockChatProvider implements AlertChannelAdapter {
   readonly kind = "mock" as const;
 
   constructor(
+    readonly channelType: Extract<ChannelType, "slack" | "discord">,
     private readonly outbox: OutboxWriter,
     private readonly clock: { now(): Date },
   ) {}
 
-  async postToWebhookUrl(
-    message: ChatWebhookMessage,
-  ): Promise<ProviderSendResult> {
-    const providerMessageId = `mock-chat-${randomUUID()}`;
+  async send(message: AlertMessage): Promise<ProviderSendResult> {
+    const providerMessageId = `mock-${this.channelType}-${randomUUID()}`;
     await this.outbox.write({
-      channel: message.service === "slack" ? "SLACK" : "DISCORD",
-      to: message.webhookUrl,
+      channel: this.channelType,
+      to: message.destination,
       deliveryId: message.deliveryId,
       payload: { ...message.payload, providerMessageId },
     });
-    console.info(`[mock:${message.service}] accepted ${message.deliveryId}`);
     return { providerMessageId, acceptedAt: this.clock.now() };
   }
 }

@@ -1,0 +1,86 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`canonical alerts delivery contract > renders a stable discord provider payload 1`] = `
+{
+  "channelType": "discord",
+  "deliveryId": "delivery-1",
+  "destination": "mock://ops",
+  "messageKey": "rule:orders/create:1001",
+  "payload": {
+    "content": "High value order: #1001 (500.00)",
+    "embeds": [
+      {
+        "description": "High value order: #1001 (500.00)",
+        "title": "#1001",
+        "url": "https://fixture.myshopify.com/admin/orders/1001",
+      },
+    ],
+  },
+}
+`;
+
+exports[`canonical alerts delivery contract > renders a stable email provider payload 1`] = `
+{
+  "channelType": "email",
+  "deliveryId": "delivery-1",
+  "destination": "mock://ops",
+  "messageKey": "rule:orders/create:1001",
+  "payload": {
+    "from": "alerts@alertproof.test",
+    "html": "<p>High value order: #1001 (500.00)</p><p><a href="https://fixture.myshopify.com/admin/orders/1001">View order in Shopify</a></p>",
+    "metadata": {
+      "deliveryId": "delivery-1",
+      "messageKey": "rule:orders/create:1001",
+    },
+    "subject": "AlertProof: #1001",
+    "text": "High value order: #1001 (500.00)
+https://fixture.myshopify.com/admin/orders/1001",
+  },
+}
+`;
+
+exports[`canonical alerts delivery contract > renders a stable slack provider payload 1`] = `
+{
+  "channelType": "slack",
+  "deliveryId": "delivery-1",
+  "destination": "mock://ops",
+  "messageKey": "rule:orders/create:1001",
+  "payload": {
+    "blocks": [
+      {
+        "text": {
+          "text": "*High value order: #1001 (500.00)*",
+          "type": "mrkdwn",
+        },
+        "type": "section",
+      },
+      {
+        "elements": [
+          {
+            "text": {
+              "text": "View order",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "url": "https://fixture.myshopify.com/admin/orders/1001",
+          },
+        ],
+        "type": "actions",
+      },
+    ],
+    "text": "High value order: #1001 (500.00)",
+  },
+}
+`;
+
+exports[`canonical alerts delivery contract > renders a stable sms provider payload 1`] = `
+{
+  "channelType": "sms",
+  "deliveryId": "delivery-1",
+  "destination": "mock://ops",
+  "messageKey": "rule:orders/create:1001",
+  "payload": {
+    "body": "High value order: #1001 (500.00) https://fixture.myshopify.com/admin/orders/1001",
+  },
+}
+`;
