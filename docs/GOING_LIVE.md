@@ -70,8 +70,9 @@ failed callbacks without exposing the auth token in logs.
 
 The checked-in [`docker-compose.production.yml`](../docker-compose.production.yml) is the
 production topology: one always-on web container, one private PostgreSQL 16 container, and the
-existing external Traefik Docker network. It exposes no host ports; Traefik is the only public
-entry point.
+existing external Traefik Docker network. The container health check uses `/livez` only to
+verify process liveness; `/healthz` remains the queue/database operational check. It exposes no
+host ports; Traefik is the only public entry point.
 
 1. On the VPS, clone the repository at the reviewed commit and copy
    `.env.production.example` to `.env.production`. Fill it from the VPS secret store, ensure the

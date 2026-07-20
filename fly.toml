@@ -27,7 +27,7 @@ primary_region = "ord"
     timeout = "3s"
     grace_period = "30s"
     method = "GET"
-    path = "/healthz"
+    path = "/livez"
 
 [[vm]]
   memory = "512mb"
