@@ -1,0 +1,62 @@
+# Production topology for Hostinger VPS + an existing Traefik Docker network.
+# Start with: docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+# Keep .env.production chmod 600 and outside Git.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env.production}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - alertproof-postgres:/var/lib/postgresql/data
+    networks:
+      - app_internal
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:3000/livez'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.alertproof.rule=Host(`${ALERTPROOF_HOST:?set ALERTPROOF_HOST in .env.production}`)"
+      - "traefik.http.routers.alertproof.entrypoints=websecure"
+      - "traefik.http.routers.alertproof.tls=true"
+      - "traefik.http.routers.alertproof.tls.certresolver=${TRAEFIK_CERT_RESOLVER:?set TRAEFIK_CERT_RESOLVER in .env.production}"
+      - "traefik.http.services.alertproof.loadbalancer.server.port=3000"
+    networks:
+      - app_internal
+      - traefik
+
+volumes:
+  alertproof-postgres:
+
+networks:
+  app_internal:
+    internal: true
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
