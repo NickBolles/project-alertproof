@@ -1,5 +1,15 @@
 # AlertProof — Phased Implementation Plan
 
+> **Status — 2026-07-20: ✅ All phases implemented, adversarially reviewed, gap-audited, and hardened.**
+> 108 tests pass, the production build passes, and the Docker image builds (`project-alertproof`, 718 MB).
+> `main` on GitHub is the source of truth. All BLOCKER/MAJOR gaps in [`GAP_REPORT.md`](./GAP_REPORT.md) are fixed
+> (order-ID GID normalization, real billing sync, escalation/refund/tenant fixes, + a production-shape contract suite).
+>
+> **Next steps:**
+> - **Deploy & live-test** → [`DEPLOYMENT_HANDOFF.md`](./DEPLOYMENT_HANDOFF.md) — VPS + Traefik + Shopify dev-store runbook.
+> - **Remaining backlog** → [`GAP_REPORT.md`](./GAP_REPORT.md) §B: in-app review-ask moment; recipient webhook-URL validation + per-recipient test send; ops polish (backoff jitter, write-back failures on `/healthz`).
+> - **Standing risk:** correctness is proven against mocks; replicate the production-shape contract-test pattern as real credentials are wired.
+
 > Engineer-ready build plan derived from `PLAN.md`. Each phase is a self-contained unit one
 > coding agent can implement in one sitting. **No phase requires live external credentials** —
 > every external dependency sits behind an adapter with a mock implementation selected by env
