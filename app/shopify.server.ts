@@ -9,6 +9,13 @@ import prisma from "./db.server";
 import { createAdapters } from "./lib/adapters/index.server";
 import { env } from "./lib/env.server";
 import { provisionShop } from "./lib/ingest/provision.server";
+import { isAuthBypassArmed } from "./lib/auth-bypass.server";
+
+if (isAuthBypassArmed(env)) {
+  console.warn(
+    `[AlertProof] DEVELOPMENT AUTH BYPASS ARMED for ${env.DEV_SHOP_DOMAIN}`,
+  );
+}
 
 const shopify = shopifyApp({
   apiKey: env.SHOPIFY_API_KEY,

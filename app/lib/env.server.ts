@@ -47,12 +47,17 @@ export const envSchema = z
       }, "ALERTPROOF_ENCRYPTION_KEY must be a base64-encoded 32-byte key"),
     ALERTPROOF_FORCE_MOCKS: flag,
     ALERTPROOF_AUTH_BYPASS: flag,
+    AUTH_MODE: z.enum(["shopify", "mock"]).default("shopify"),
     DEV_SHOP_DOMAIN: z
       .string()
       .regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/)
       .default("alertproof-dev.myshopify.com"),
     DISABLE_WORKER: flag,
     SHOP_CUSTOM_DOMAIN: optionalString,
+    SHOPIFY_APP_PRICING_URL: z.preprocess(
+      emptyToUndefined,
+      z.string().url().optional(),
+    ),
   })
   .superRefine((value, context) => {
     const twilioValues = [

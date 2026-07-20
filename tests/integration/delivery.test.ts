@@ -48,6 +48,7 @@ async function seedRoute(client: PrismaClient, suffix: string) {
 
 integration("delivery persistence and dispatch", () => {
   beforeEach(async () => {
+    await prisma.providerEvent.deleteMany();
     await prisma.shop.deleteMany({ where: { shopDomain } });
     await prisma.shop.create({
       data: {
@@ -82,7 +83,7 @@ integration("delivery persistence and dispatch", () => {
     expect(left.length + right.length).toBe(1);
   });
 
-  it("dispatches one mock send and reaches SENT", async () => {
+  it("dispatches one mock send and auto-confirms delivery", async () => {
     const route = await seedRoute(prisma, "1002");
     const store = new PrismaDeliveryLogStore(prisma);
     await store.record(route);
@@ -101,7 +102,7 @@ integration("delivery persistence and dispatch", () => {
     expect(result).toMatchObject({ claimed: 1, sent: 1, failed: 0 });
     expect(outbox.records).toHaveLength(1);
     expect(await prisma.delivery.findFirst()).toMatchObject({
-      status: DeliveryStatus.SENT,
+      status: DeliveryStatus.DELIVERED,
       attempts: 1,
     });
     await new AlertDispatcher(store, prisma, adapters, clock).dispatch();

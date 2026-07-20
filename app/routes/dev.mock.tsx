@@ -2,15 +2,11 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import prisma from "../db.server";
 import { createAdapters } from "../lib/adapters/index.server";
 import { env } from "../lib/env.server";
+import { isAuthBypassArmed } from "../lib/auth-bypass.server";
 import { handleProviderStatusWebhook } from "../lib/delivery/status.server";
 
 function enabled(request: Request): boolean {
-  if (
-    env.NODE_ENV === "production" ||
-    !env.ALERTPROOF_AUTH_BYPASS ||
-    env.SHOPIFY_API_KEY !== "dev-key" ||
-    env.SHOPIFY_API_SECRET !== "dev-secret"
-  ) {
+  if (!isAuthBypassArmed(env)) {
     return false;
   }
   return request.headers.get("authorization") === `Bearer ${env.CRON_SECRET}`;

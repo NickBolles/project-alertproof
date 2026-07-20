@@ -98,7 +98,7 @@ export function createAdapters(
         : new MockShopifyAdmin(dependencies.shopifyFixtures),
     billing:
       selectedMode.billing === "shopify"
-        ? new ShopifyBillingService()
+        ? new ShopifyBillingService(planStore, config.SHOPIFY_APP_PRICING_URL)
         : new MockBillingService(planStore),
     chatFor,
     channelFor,

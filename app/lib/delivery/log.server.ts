@@ -195,17 +195,22 @@ export class PrismaDeliveryLogStore implements DeliveryLogStore {
       if (result.count !== 1) return false;
       const delivery = await tx.delivery.findUniqueOrThrow({
         where: { id: input.deliveryId },
-        select: { alertId: true },
-      });
-      await tx.alert.update({
-        where: { id: delivery.alertId },
-        data: {
-          writebackPending: true,
-          writebackAttempts: 0,
-          writebackNextAt: new Date(input.at.getTime() + 60_000),
-          writebackError: null,
+        select: {
+          alertId: true,
+          alert: { select: { webhookEvent: { select: { source: true } } } },
         },
       });
+      if (delivery.alert.webhookEvent?.source !== "TEST") {
+        await tx.alert.update({
+          where: { id: delivery.alertId },
+          data: {
+            writebackPending: true,
+            writebackAttempts: 0,
+            writebackNextAt: new Date(input.at.getTime() + 60_000),
+            writebackError: null,
+          },
+        });
+      }
       return true;
     });
   }
@@ -236,15 +241,21 @@ export class PrismaDeliveryLogStore implements DeliveryLogStore {
         },
       });
       if (result.count === 1) {
-        await tx.alert.update({
+        const alert = await tx.alert.findUniqueOrThrow({
           where: { id: current.alertId },
-          data: {
-            writebackPending: true,
-            writebackAttempts: 0,
-            writebackNextAt: new Date(event.occurredAt.getTime() + 60_000),
-            writebackError: null,
-          },
+          select: { webhookEvent: { select: { source: true } } },
         });
+        if (alert.webhookEvent?.source !== "TEST") {
+          await tx.alert.update({
+            where: { id: current.alertId },
+            data: {
+              writebackPending: true,
+              writebackAttempts: 0,
+              writebackNextAt: new Date(event.occurredAt.getTime() + 60_000),
+              writebackError: null,
+            },
+          });
+        }
         return true;
       }
       return Boolean(

@@ -94,7 +94,7 @@ e2e("signed webhook to terminal delivery", () => {
     const delivery = await prisma.delivery.findFirstOrThrow({
       where: { alert: { shopId: "e2e-shop" } },
     });
-    expect(delivery.status).toBe(DeliveryStatus.SENT);
+    expect(delivery.status).toBe(DeliveryStatus.DELIVERED);
     expect(outbox.records).toHaveLength(1);
 
     await handleProviderStatusWebhook({

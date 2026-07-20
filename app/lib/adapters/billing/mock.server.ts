@@ -18,6 +18,7 @@ export class MockBillingService implements BillingService {
   }): Promise<{ confirmationUrl: string }> {
     const confirmationId = `mock-charge-${randomUUID()}`;
     this.pending.set(`${input.shopId}:${confirmationId}`, input.plan);
+    await this.plans.set(input.shopId, input.plan, confirmationId);
     return {
       confirmationUrl: `${input.returnUrl}${input.returnUrl.includes("?") ? "&" : "?"}mock_confirmation_id=${confirmationId}`,
     };

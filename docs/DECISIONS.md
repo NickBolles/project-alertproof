@@ -33,3 +33,11 @@ Phase 0 verification used a temporary PGlite PostgreSQL wire-protocol server to 
 migration, run the idempotent seed, and execute the integration test. PGlite is not an application
 dependency or supported runtime database; CI and normal development use PostgreSQL 16. No SQLite
 production/schema deviation was introduced.
+
+## Phase 6 billing implementation
+
+The production billing adapter uses Shopify-managed App Pricing: it sends merchants to the
+Partner Dashboard-configured pricing URL and reads the app's server-side `Shop.plan` projection.
+It never accepts a client query parameter as proof of entitlement and creates no legacy recurring
+application charge. Local and CI flows use `MockBillingService`, which activates upgrades
+immediately and exercises the identical billing page and entitlement services without credentials.

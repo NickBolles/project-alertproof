@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   Channel,
   DeliveryStatus,
+  EventSource,
   Plan,
   Prisma,
   Trigger,
@@ -9,6 +10,10 @@ import {
 } from "@prisma/client";
 import { createAdapters } from "../adapters/index.server";
 import { channelAccessForPlan } from "../billing/features.server";
+import {
+  effectivePlanForShop,
+  isOverOrderLimit,
+} from "../billing/plans.server";
 import { SHOPIFY_TOPICS } from "../ingest/topics";
 import {
   registerTopicHandler,
@@ -95,6 +100,7 @@ async function createAlerts(
     shopPlan: Plan;
     facts: TriggerFacts;
     rules: RuleWithRecipients[];
+    skipAllReason?: string;
   },
 ): Promise<number> {
   let created = 0;
@@ -114,6 +120,7 @@ async function createAlerts(
           orderName: summary.orderName,
           orderValue: summary.orderValue,
           firedAt: input.event.receivedAt,
+          writebackPending: input.event.source !== EventSource.TEST,
         },
       ],
       skipDuplicates: true,
@@ -125,6 +132,7 @@ async function createAlerts(
         const access = channelAccessForPlan(input.shopPlan, channel);
         const destination = recipientDestination(recipient, channel);
         const configured = Boolean(destination);
+        const skippedByUsage = Boolean(input.skipAllReason);
         return {
           alertId,
           recipientId: recipient.id,
@@ -132,16 +140,20 @@ async function createAlerts(
           messageKey,
           destination: destination ?? `unconfigured:${recipient.id}`,
           status:
-            configured && access.allowed
+            configured && access.allowed && !skippedByUsage
               ? DeliveryStatus.PENDING
               : DeliveryStatus.SKIPPED,
           statusAt:
-            configured && access.allowed ? null : input.event.receivedAt,
-          lastError: !access.allowed
-            ? access.reason
-            : configured
+            configured && access.allowed && !skippedByUsage
               ? null
-              : `Recipient has no ${channel.toLowerCase()} destination configured`,
+              : input.event.receivedAt,
+          lastError: input.skipAllReason
+            ? input.skipAllReason
+            : !access.allowed
+              ? access.reason
+              : configured
+                ? null
+                : `Recipient has no ${channel.toLowerCase()} destination configured`,
         };
       }),
     );
@@ -157,27 +169,40 @@ async function updateUsageCounter(
   tx: TransactionClient,
   event: ProcessableWebhookEvent,
   shopId: string,
-): Promise<void> {
-  if (event.topic !== SHOPIFY_TOPICS.ORDERS_CREATE) return;
+): Promise<number | null> {
+  if (event.source === EventSource.TEST) return null;
   const year = event.receivedAt.getUTCFullYear();
   const month = event.receivedAt.getUTCMonth();
   const periodYYYYMM = `${year}-${String(month + 1).padStart(2, "0")}`;
   const start = new Date(Date.UTC(year, month, 1));
   const end = new Date(Date.UTC(year, month + 1, 1));
-  const [row] = await tx.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
-    SELECT COUNT(DISTINCT "orderId")::bigint AS count
-    FROM "WebhookEvent"
-    WHERE "shopDomain" = ${event.shopDomain}
-      AND topic = ${SHOPIFY_TOPICS.ORDERS_CREATE}
-      AND "orderId" IS NOT NULL
-      AND "receivedAt" >= ${start}
-      AND "receivedAt" < ${end}
-  `);
-  await tx.usageCounter.upsert({
-    where: { shopId_periodYYYYMM: { shopId, periodYYYYMM } },
-    update: { ordersProcessed: Number(row?.count ?? 0) },
-    create: { shopId, periodYYYYMM, ordersProcessed: Number(row?.count ?? 0) },
-  });
+  if (event.topic === SHOPIFY_TOPICS.ORDERS_CREATE) {
+    const [row] = await tx.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(DISTINCT "orderId")::bigint AS count
+      FROM "WebhookEvent"
+      WHERE "shopDomain" = ${event.shopDomain}
+        AND topic = ${SHOPIFY_TOPICS.ORDERS_CREATE}
+        AND source <> 'TEST'::"EventSource"
+        AND "orderId" IS NOT NULL
+        AND "receivedAt" >= ${start}
+        AND "receivedAt" < ${end}
+    `);
+    const ordersProcessed = Number(row?.count ?? 0);
+    await tx.usageCounter.upsert({
+      where: { shopId_periodYYYYMM: { shopId, periodYYYYMM } },
+      update: { ordersProcessed },
+      create: { shopId, periodYYYYMM, ordersProcessed },
+    });
+    return ordersProcessed;
+  }
+  return (
+    (
+      await tx.usageCounter.findUnique({
+        where: { shopId_periodYYYYMM: { shopId, periodYYYYMM } },
+        select: { ordersProcessed: true },
+      })
+    )?.ordersProcessed ?? 0
+  );
 }
 
 async function processInventoryFacts(input: {
@@ -282,6 +307,8 @@ export async function processRulesForEvent(
     },
   });
   if (!shop) throw new Error(`Unknown shop ${event.shopDomain}`);
+  const entitlementNow = dependencies.now ?? event.receivedAt;
+  const effectivePlan = effectivePlanForShop(shop, entitlementNow);
 
   if (initialFacts.topic === SHOPIFY_TOPICS.INVENTORY_LEVELS_UPDATE) {
     await processInventoryFacts({
@@ -289,7 +316,7 @@ export async function processRulesForEvent(
       event,
       facts: initialFacts,
       shopId: shop.id,
-      shopPlan: shop.plan,
+      shopPlan: effectivePlan,
       rules: shop.rules,
     });
     return;
@@ -323,14 +350,19 @@ export async function processRulesForEvent(
 
   const matched = evaluateAll(facts, shop.rules);
   await context.prisma.$transaction(async (tx) => {
+    const ordersProcessed = await updateUsageCounter(tx, event, shop.id);
     await createAlerts(tx, {
       event,
       shopId: shop.id,
-      shopPlan: shop.plan,
+      shopPlan: effectivePlan,
       facts,
       rules: matched,
+      skipAllReason:
+        ordersProcessed !== null &&
+        isOverOrderLimit(effectivePlan, ordersProcessed)
+          ? "over_free_limit"
+          : undefined,
     });
-    await updateUsageCounter(tx, event, shop.id);
   });
 }
 
