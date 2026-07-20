@@ -66,12 +66,34 @@ as one encrypted AES-256-GCM blob. Merchant credentials take precedence over app
 app credentials take precedence over the mock adapter. Test sent, delivered, undelivered, and
 failed callbacks without exposing the auth token in logs.
 
-## 5. Deploy on Fly.io
+## 5. Deploy on the Hostinger VPS behind Traefik
 
-Review the globally unique app name and region in `fly.toml`, then run `fly launch --no-deploy`.
-Set all secrets with `fly secrets set` and attach the PostgreSQL `DATABASE_URL`; never put them
-in `fly.toml`. Deploy with `fly deploy`, then verify `/healthz` returns database status, queue
-depth, DEAD count, and oldest-pending age.
+The checked-in [`docker-compose.production.yml`](../docker-compose.production.yml) is the
+production topology: one always-on web container, one private PostgreSQL 16 container, and the
+existing external Traefik Docker network. It exposes no host ports; Traefik is the only public
+entry point.
+
+1. On the VPS, clone the repository at the reviewed commit and copy
+   `.env.production.example` to `.env.production`. Fill it from the VPS secret store, ensure the
+   `DATABASE_URL` password matches `POSTGRES_PASSWORD`, and run `chmod 600 .env.production`.
+   Back up `ALERTPROOF_ENCRYPTION_KEY` independently before the first merchant connects.
+2. Confirm DNS for `ALERTPROOF_HOST` points to the VPS, and that both `TRAEFIK_NETWORK` and
+   `TRAEFIK_CERT_RESOLVER` name existing Traefik configuration. Do not put real values in the
+   compose file or image layer.
+3. Validate rendering before starting anything:
+   `docker compose --env-file .env.production -f docker-compose.production.yml config`.
+4. Start the release:
+   `docker compose --env-file .env.production -f docker-compose.production.yml up -d --build`.
+   The web entrypoint runs `prisma migrate deploy` before serving, so migrations occur once per
+   container start and remain idempotent.
+5. Verify the release before Shopify wiring:
+   `curl --fail --show-error https://alertproof.nickbolles.com/healthz`. The JSON must report
+   database status, queue depth, DEAD count, and oldest-pending age. Also inspect
+   `docker compose --env-file .env.production -f docker-compose.production.yml ps` and logs.
+6. Before live merchant data, configure encrypted, off-host PostgreSQL backups with documented
+   retention and a tested restore procedure. The backup must be recoverable with the separately
+   retained `ALERTPROOF_ENCRYPTION_KEY`; a database backup without that key cannot recover
+   merchant-managed encrypted credentials.
 
 The always-on process runs dispatch continuously, reconciliation every 15 minutes, escalation
 every minute, digest evaluation hourly, and retention pruning daily. Configure an independent
