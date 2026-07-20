@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MockBillingService } from "../../app/lib/adapters/billing/mock.server";
 import { MockChatProvider } from "../../app/lib/adapters/chat/mock.server";
 import { FakeClock } from "../../app/lib/adapters/clock/fake.server";
@@ -12,10 +12,12 @@ const now = new Date("2026-07-20T12:00:00.000Z");
 describe("mock adapters", () => {
   it("MockEmailProvider.send writes MockOutbox", async () => {
     const outbox = new MemoryOutbox();
+    const emitDelivered = vi.fn();
     const provider = new MockEmailProvider(
       outbox,
       new FakeClock(now),
       "secret",
+      emitDelivered,
     );
     const result = await provider.send({
       deliveryId: "delivery-1",
@@ -35,6 +37,11 @@ describe("mock adapters", () => {
       channel: "email",
       to: "ops@example.test",
       deliveryId: "delivery-1",
+    });
+    expect(emitDelivered).toHaveBeenCalledWith({
+      providerMessageId: result.providerMessageId,
+      status: "delivered",
+      occurredAt: "2026-07-20T12:00:01.000Z",
     });
   });
 
@@ -97,6 +104,7 @@ describe("mock adapters", () => {
       value: "delivered",
     });
     expect(page.orders).toHaveLength(1);
+    expect(page.orders[0].id).toBe("1");
     expect(admin.metafieldWrites).toHaveLength(1);
     expect(await admin.getShopTimezone(shopDomain)).toBe("America/Chicago");
   });

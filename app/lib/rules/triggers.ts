@@ -1,5 +1,9 @@
 import { Trigger } from "@prisma/client";
 import { canonicalizeTopic, SHOPIFY_TOPICS } from "../ingest/topics";
+import {
+  canonicalOrderId,
+  canonicalShopifyResourceId,
+} from "../shopify/identity";
 
 export type OrderFacts = {
   topic: "orders/create" | "orders/paid";
@@ -67,7 +71,7 @@ export function extractTriggerFacts(
     canonicalTopic === SHOPIFY_TOPICS.ORDERS_CREATE ||
     canonicalTopic === SHOPIFY_TOPICS.ORDERS_PAID
   ) {
-    const orderId = id(payload.id);
+    const orderId = canonicalOrderId(payload.id);
     if (!orderId) return null;
     return {
       topic: canonicalTopic,
@@ -82,8 +86,8 @@ export function extractTriggerFacts(
   }
 
   if (canonicalTopic === SHOPIFY_TOPICS.REFUNDS_CREATE) {
-    const orderId = id(payload.order_id);
-    const refundId = id(payload.id);
+    const orderId = canonicalOrderId(payload.order_id);
+    const refundId = canonicalShopifyResourceId(payload.id);
     if (!orderId || !refundId) return null;
     return {
       topic: canonicalTopic,
@@ -94,8 +98,8 @@ export function extractTriggerFacts(
   }
 
   if (canonicalTopic === SHOPIFY_TOPICS.ORDER_TRANSACTIONS_CREATE) {
-    const orderId = id(payload.order_id);
-    const transactionId = id(payload.id);
+    const orderId = canonicalOrderId(payload.order_id);
+    const transactionId = canonicalShopifyResourceId(payload.id);
     if (!orderId || !transactionId) return null;
     return {
       topic: canonicalTopic,

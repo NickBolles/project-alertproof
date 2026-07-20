@@ -1,0 +1,13 @@
+{
+  "data": {
+    "currentAppInstallation": {
+      "activeSubscriptions": [
+        {
+          "id": "gid://shopify/AppSubscription/3001",
+          "name": "AlertProof Pro",
+          "status": "ACTIVE"
+        }
+      ]
+    }
+  }
+}

@@ -78,7 +78,6 @@ export class AlertDispatcher implements AlertDispatcherContract {
             : this.adapters.channelFor(delivery.channelType, destination);
         const result = await adapter.send(message);
         const terminal =
-          adapter.kind === "mock" ||
           delivery.channelType === "slack" ||
           delivery.channelType === "discord";
         const changed = await this.store.transition({

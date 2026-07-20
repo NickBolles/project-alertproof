@@ -10,11 +10,7 @@ import { signedShopifyWebhook } from "../helpers/webhook-signer";
 describe("webhook ingest primitives", () => {
   it.each([
     ["ORDERS_CREATE", { id: 101 }, "101"],
-    [
-      "orders/paid",
-      { id: "gid://shopify/Order/102" },
-      "gid://shopify/Order/102",
-    ],
+    ["orders/paid", { id: "gid://shopify/Order/102" }, "102"],
     ["refunds/create", { id: 501, order_id: 103 }, "103"],
     ["ORDER_TRANSACTIONS_CREATE", { id: 601, order_id: "104" }, "104"],
     ["inventory_levels/update", { inventory_item_id: 1 }, null],
@@ -22,25 +18,28 @@ describe("webhook ingest primitives", () => {
     expect(extractOrderId(topic, payload)).toBe(expected);
   });
 
-  it("derives independent expected events per topic and refund resource", () => {
+  it("derives paid expectations for refunded orders and canonical refund resources", () => {
     const events = expectedEventsForOrder("fixture.myshopify.com", {
       id: "gid://shopify/Order/1",
       name: "#1",
       createdAt: new Date("2026-07-20T00:00:00Z"),
       updatedAt: new Date("2026-07-20T01:00:00Z"),
-      financialStatus: "paid",
+      financialStatus: "refunded",
       refunds: [
-        { id: "refund-1", createdAt: new Date("2026-07-20T01:00:00Z") },
-        { id: "refund-2", createdAt: new Date("2026-07-20T02:00:00Z") },
+        {
+          id: "gid://shopify/Refund/201",
+          createdAt: new Date("2026-07-20T01:00:00Z"),
+        },
+        { id: "202", createdAt: new Date("2026-07-20T02:00:00Z") },
       ],
       lineItems: [],
     });
 
     expect(events.map((event) => [event.topic, event.resourceId])).toEqual([
-      ["orders/create", "gid://shopify/Order/1"],
-      ["orders/paid", "gid://shopify/Order/1"],
-      ["refunds/create", "refund-1"],
-      ["refunds/create", "refund-2"],
+      ["orders/create", "1"],
+      ["orders/paid", "1"],
+      ["refunds/create", "201"],
+      ["refunds/create", "202"],
     ]);
     expect(new Set(events.map((event) => event.syntheticWebhookId)).size).toBe(
       4,
@@ -90,6 +89,37 @@ describe("webhook ingest primitives", () => {
     expect(order).toEqual(["persisted", "kicked"]);
     expect(enqueue).toHaveBeenCalledOnce();
     expect(kick).toHaveBeenCalledOnce();
+  });
+
+  it("assigns unique webhook IDs when Shopify omits the delivery ID", async () => {
+    const ids: string[] = [];
+    const enqueue = vi.fn(async (input: { shopifyWebhookId: string }) => {
+      ids.push(input.shopifyWebhookId);
+      return {
+        inserted: true,
+        orderId: "1",
+        resourceId: "1",
+        topic: "orders/create",
+      };
+    });
+    const request = () =>
+      new Request("http://localhost/webhooks/shopify", { method: "POST" });
+    const overrides = {
+      authenticateWebhook: async () => ({
+        payload: { id: 1 },
+        shop: "fixture.myshopify.com",
+        topic: "ORDERS_CREATE" as never,
+        webhookId: "",
+      }),
+      enqueue,
+      kick: vi.fn(),
+      logLatency: vi.fn(),
+    };
+    await handleShopifyWebhook(request(), overrides);
+    await handleShopifyWebhook(request(), overrides);
+    expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(ids[1]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(ids[0]).not.toBe(ids[1]);
   });
 
   it("rejects a bad Shopify HMAC before enqueue", async () => {

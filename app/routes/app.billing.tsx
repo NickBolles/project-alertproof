@@ -10,13 +10,25 @@ import {
 } from "../lib/billing/plans.server";
 import { env } from "../lib/env.server";
 import { isAuthBypassArmed } from "../lib/auth-bypass.server";
+import { PrismaShopPlanStore } from "../lib/adapters/outbox.server";
+import { reconcileShopSubscription } from "../lib/billing/subscriptions.server";
 
 async function billingContext(request: Request) {
   const { session } = await authenticateAdmin(request);
-  const shop = await prisma.shop.findUniqueOrThrow({
+  let shop = await prisma.shop.findUniqueOrThrow({
     where: { shopDomain: session.shop },
   });
-  return { shop, billing: createAdapters().billing };
+  const adapters = createAdapters();
+  if (adapters.shopifyAdmin.kind === "shopify") {
+    await reconcileShopSubscription({
+      shopId: shop.id,
+      shopDomain: shop.shopDomain,
+      shopifyAdmin: adapters.shopifyAdmin,
+      planStore: new PrismaShopPlanStore(prisma),
+    });
+    shop = await prisma.shop.findUniqueOrThrow({ where: { id: shop.id } });
+  }
+  return { shop, billing: adapters.billing };
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {

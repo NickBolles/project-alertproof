@@ -47,12 +47,14 @@ export const PLAN_FEATURES = {
 
 export type ShopPlanState = { plan: Plan; trialEndsAt: Date | null };
 
-/** An active 14-day trial receives Standard entitlements without mutating billing state. */
+/** A Free shop on an active trial receives Standard; paid plans are never downgraded. */
 export function effectivePlanForShop(
   shop: ShopPlanState,
   now = new Date(),
 ): Plan {
-  return shop.trialEndsAt && shop.trialEndsAt > now ? Plan.STANDARD : shop.plan;
+  return shop.plan === Plan.FREE && shop.trialEndsAt && shop.trialEndsAt > now
+    ? Plan.STANDARD
+    : shop.plan;
 }
 
 export function featuresForShop(

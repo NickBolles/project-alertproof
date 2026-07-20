@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { authenticate } from "../../shopify.server";
 import { enqueueWebhook } from "./enqueue.server";
 import { kickWebhookWorker } from "./worker.server";
@@ -40,7 +41,7 @@ export async function handleShopifyWebhook(
   const { payload, shop, topic, webhookId } =
     await deps.authenticateWebhook(request);
   const resolvedWebhookId =
-    webhookId || request.headers.get("X-Shopify-Webhook-Id") || "";
+    webhookId || request.headers.get("X-Shopify-Webhook-Id") || randomUUID();
   await deps.enqueue({
     shopDomain: shop,
     topic: String(topic),

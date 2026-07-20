@@ -1,4 +1,13 @@
-import type { OrdersPage, ShopifyAdmin, ShopifyOrder } from "../../ports";
+import type {
+  OrdersPage,
+  ShopifyAdmin,
+  ShopifyAppSubscription,
+  ShopifyOrder,
+} from "../../ports";
+import {
+  canonicalOrderId,
+  canonicalShopifyResourceId,
+} from "../../shopify/identity";
 
 type MetafieldWrite = Parameters<ShopifyAdmin["writeOrderMetafield"]>[0];
 type NoteWrite = Parameters<ShopifyAdmin["addOrderNote"]>[0];
@@ -18,23 +27,58 @@ export class MockShopifyAdmin implements ShopifyAdmin {
     string,
     { id: string; title: string; collectionIds: string[] }
   >();
+  private readonly subscriptions = new Map<string, ShopifyAppSubscription[]>();
 
   constructor(
     fixtures: {
       orders?: Record<string, ShopifyOrder[]>;
       timezone?: string;
+      subscriptions?: Record<string, ShopifyAppSubscription[]>;
     } = {},
   ) {
     for (const [shop, orders] of Object.entries(fixtures.orders ?? {})) {
-      this.orders.set(shop, structuredClone(orders));
+      this.orders.set(
+        shop,
+        orders.map((order) => this.normalizeOrder(order)),
+      );
+    }
+    for (const [shop, subscriptions] of Object.entries(
+      fixtures.subscriptions ?? {},
+    )) {
+      this.subscriptions.set(shop, structuredClone(subscriptions));
     }
     this.timezone = fixtures.timezone ?? "UTC";
   }
 
   private readonly timezone: string;
 
+  private normalizeOrder(order: ShopifyOrder): ShopifyOrder {
+    const id = canonicalOrderId(order.id);
+    if (!id) throw new Error(`Invalid Shopify order id: ${order.id}`);
+    return {
+      ...structuredClone(order),
+      id,
+      refunds: order.refunds.map((refund) => {
+        const refundId = canonicalShopifyResourceId(refund.id);
+        if (!refundId)
+          throw new Error(`Invalid Shopify refund id: ${refund.id}`);
+        return { ...structuredClone(refund), id: refundId };
+      }),
+    };
+  }
+
   seedOrders(shopDomain: string, orders: ShopifyOrder[]): void {
-    this.orders.set(shopDomain, structuredClone(orders));
+    this.orders.set(
+      shopDomain,
+      orders.map((order) => this.normalizeOrder(order)),
+    );
+  }
+
+  seedActiveAppSubscriptions(
+    shopDomain: string,
+    subscriptions: ShopifyAppSubscription[],
+  ): void {
+    this.subscriptions.set(shopDomain, structuredClone(subscriptions));
   }
 
   seedProduct(product: {
@@ -82,5 +126,11 @@ export class MockShopifyAdmin implements ShopifyAdmin {
 
   async getShopTimezone(_shopDomain: string): Promise<string> {
     return this.timezone;
+  }
+
+  async getActiveAppSubscriptions(input: {
+    shopDomain: string;
+  }): Promise<ShopifyAppSubscription[]> {
+    return structuredClone(this.subscriptions.get(input.shopDomain) ?? []);
   }
 }

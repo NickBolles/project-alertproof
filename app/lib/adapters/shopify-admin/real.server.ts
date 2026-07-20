@@ -1,9 +1,25 @@
-import type { OrdersPage, ShopifyAdmin, ShopifyOrder } from "../../ports";
+import type {
+  OrdersPage,
+  ShopifyAdmin,
+  ShopifyAppSubscription,
+  ShopifyOrder,
+} from "../../ports";
+import {
+  canonicalOrderId,
+  canonicalShopifyResourceId,
+  shopifyOrderGid,
+} from "../../shopify/identity";
 
 type GraphqlBody<T> = {
   data?: T;
   errors?: Array<{ message: string }>;
 };
+
+export type ShopifyGraphqlTransport = (
+  shopDomain: string,
+  query: string,
+  variables?: Record<string, unknown>,
+) => Promise<{ json(): Promise<unknown> }>;
 
 function assertGraphql<T>(body: GraphqlBody<T>): T {
   if (!body.data || body.errors?.length) {
@@ -27,15 +43,21 @@ function assertNoUserErrors(
 export class RealShopifyAdmin implements ShopifyAdmin {
   readonly kind = "shopify" as const;
 
+  constructor(private readonly transport?: ShopifyGraphqlTransport) {}
+
   private async graphql<T>(
     shopDomain: string,
     query: string,
     variables?: Record<string, unknown>,
   ): Promise<T> {
-    // Dynamic import avoids a startup cycle: shopify.server creates the adapter factory.
-    const { unauthenticated } = await import("../../../shopify.server");
-    const { admin } = await unauthenticated.admin(shopDomain);
-    const response = await admin.graphql(query, { variables });
+    const response = this.transport
+      ? await this.transport(shopDomain, query, variables)
+      : await (async () => {
+          // Dynamic import avoids a startup cycle: shopify.server creates the adapter factory.
+          const { unauthenticated } = await import("../../../shopify.server");
+          const { admin } = await unauthenticated.admin(shopDomain);
+          return admin.graphql(query, { variables });
+        })();
     return assertGraphql((await response.json()) as GraphqlBody<T>);
   }
 
@@ -47,6 +69,7 @@ export class RealShopifyAdmin implements ShopifyAdmin {
   }): Promise<OrdersPage> {
     type OrderNode = {
       id: string;
+      legacyResourceId?: string | number | null;
       name: string;
       createdAt: string;
       updatedAt: string;
@@ -72,7 +95,7 @@ export class RealShopifyAdmin implements ShopifyAdmin {
         query ReconcileOrders($first: Int!, $after: String, $query: String!) {
           orders(first: $first, after: $after, sortKey: UPDATED_AT, query: $query) {
             nodes {
-              id name createdAt updatedAt displayFinancialStatus
+              id legacyResourceId name createdAt updatedAt displayFinancialStatus
               currentTotalPriceSet { shopMoney { amount } }
               refunds(first: 250) { nodes { id createdAt } }
               lineItems(first: 100) {
@@ -90,14 +113,22 @@ export class RealShopifyAdmin implements ShopifyAdmin {
       },
     );
     const orders: ShopifyOrder[] = data.orders.nodes.map((order) => ({
-      id: order.id,
+      id:
+        canonicalOrderId(order.legacyResourceId ?? order.id) ??
+        (() => {
+          throw new Error(`Invalid Shopify order id: ${order.id}`);
+        })(),
       name: order.name,
       createdAt: new Date(order.createdAt),
       updatedAt: new Date(order.updatedAt),
       financialStatus: order.displayFinancialStatus?.toLowerCase(),
       totalPrice: order.currentTotalPriceSet?.shopMoney.amount,
       refunds: order.refunds.nodes.map((refund) => ({
-        id: refund.id,
+        id:
+          canonicalShopifyResourceId(refund.id) ??
+          (() => {
+            throw new Error(`Invalid Shopify refund id: ${refund.id}`);
+          })(),
         createdAt: new Date(refund.createdAt),
       })),
       lineItems: order.lineItems.nodes.map((item) => ({
@@ -137,7 +168,7 @@ export class RealShopifyAdmin implements ShopifyAdmin {
       {
         metafields: [
           {
-            ownerId: input.orderId,
+            ownerId: shopifyOrderGid(input.orderId),
             namespace: input.namespace,
             key: input.key,
             type: "json",
@@ -159,7 +190,7 @@ export class RealShopifyAdmin implements ShopifyAdmin {
     }>(
       input.shopDomain,
       `#graphql query AlertProofOrderNote($id: ID!) { order(id: $id) { note } }`,
-      { id: input.orderId },
+      { id: shopifyOrderGid(input.orderId) },
     );
     if (!current.order)
       throw new Error(`Shopify order not found: ${input.orderId}`);
@@ -178,7 +209,7 @@ export class RealShopifyAdmin implements ShopifyAdmin {
           orderUpdate(input: $input) { userErrors { field message } }
         }
       `,
-      { input: { id: input.orderId, note } },
+      { input: { id: shopifyOrderGid(input.orderId), note } },
     );
     assertNoUserErrors(data.orderUpdate.userErrors);
   }
@@ -218,5 +249,27 @@ export class RealShopifyAdmin implements ShopifyAdmin {
       `#graphql query AlertProofShopTimezone { shop { ianaTimezone } }`,
     );
     return data.shop.ianaTimezone;
+  }
+
+  async getActiveAppSubscriptions(input: {
+    shopDomain: string;
+  }): Promise<ShopifyAppSubscription[]> {
+    const data = await this.graphql<{
+      currentAppInstallation: {
+        activeSubscriptions: ShopifyAppSubscription[];
+      };
+    }>(
+      input.shopDomain,
+      `#graphql
+        query AlertProofActiveSubscriptions {
+          currentAppInstallation {
+            activeSubscriptions { id name status }
+          }
+        }
+      `,
+    );
+    return data.currentAppInstallation.activeSubscriptions.map(
+      (subscription) => ({ ...subscription }),
+    );
   }
 }

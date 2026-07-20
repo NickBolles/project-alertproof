@@ -215,7 +215,9 @@ export class PrismaDeliveryLogStore implements DeliveryLogStore {
     });
   }
 
-  async updateStatus(event: ProviderStatusEvent): Promise<boolean> {
+  async updateStatus(
+    event: ProviderStatusEvent & { status: DeliveryStatus },
+  ): Promise<boolean> {
     return this.client.$transaction(async (tx) => {
       const current = await tx.delivery.findUnique({
         where: { providerMessageId: event.providerMessageId },

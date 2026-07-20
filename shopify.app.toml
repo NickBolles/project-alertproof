@@ -11,7 +11,7 @@ include_config_on_deploy = true
 api_version = "2026-07"
 
 [[webhooks.subscriptions]]
-topics = ["app/uninstalled", "inventory_levels/update", "orders/create", "orders/paid", "order_transactions/create", "refunds/create"]
+topics = ["app/uninstalled", "app_subscriptions/update", "inventory_levels/update", "orders/create", "orders/paid", "order_transactions/create", "refunds/create"]
 uri = "/webhooks/shopify"
 
 [[webhooks.subscriptions]]

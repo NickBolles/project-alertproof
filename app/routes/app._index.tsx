@@ -49,12 +49,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  await authenticateAdmin(request);
+  const { session } = await authenticateAdmin(request);
   const form = await request.formData();
   if (form.get("intent") !== "requeue-dead") {
     return Response.json({ error: "Unknown action" }, { status: 400 });
   }
-  return Response.json({ requeued: await requeueDeadEvents() });
+  return Response.json({
+    requeued: await requeueDeadEvents({ shopDomain: session.shop }),
+  });
 }
 
 export type DashboardData = Awaited<ReturnType<typeof loader>>;

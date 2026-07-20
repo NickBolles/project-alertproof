@@ -1,0 +1,18 @@
+{
+  "delivery": {
+    "RecordType": "Delivery",
+    "MessageID": "postmark-4001",
+    "DeliveredAt": "2026-07-20T12:06:00.000Z"
+  },
+  "spamComplaint": {
+    "RecordType": "SpamComplaint",
+    "MessageID": "postmark-4001",
+    "BouncedAt": "2026-07-20T12:07:00.000Z",
+    "Description": "Spam complaint"
+  },
+  "open": {
+    "RecordType": "Open",
+    "MessageID": "postmark-4001",
+    "ReceivedAt": "2026-07-20T12:08:00.000Z"
+  }
+}

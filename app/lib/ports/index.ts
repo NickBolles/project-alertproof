@@ -45,7 +45,9 @@ export type StatusWebhook = {
 export type ProviderStatusEvent = {
   provider: string;
   providerMessageId: string;
-  status: DeliveryStatus;
+  /** Null means authenticated and auditable, but not a delivery transition. */
+  status: DeliveryStatus | null;
+  type: string;
   occurredAt: Date;
   detail: unknown;
 };
@@ -100,7 +102,9 @@ export interface DeliveryLogStore {
     error?: string | null;
     nextAttemptAt?: Date;
   }): Promise<boolean>;
-  updateStatus(event: ProviderStatusEvent): Promise<boolean>;
+  updateStatus(
+    event: ProviderStatusEvent & { status: DeliveryStatus },
+  ): Promise<boolean>;
 }
 
 export interface AlertDispatcher {
@@ -126,6 +130,12 @@ export type ShopifyOrder = {
 export type OrdersPage = {
   orders: ShopifyOrder[];
   nextCursor?: string;
+};
+
+export type ShopifyAppSubscription = {
+  id: string;
+  name: string;
+  status: string;
 };
 
 export interface ShopifyAdmin {
@@ -154,6 +164,9 @@ export interface ShopifyAdmin {
     collectionIds: string[];
   } | null>;
   getShopTimezone(shopDomain: string): Promise<string>;
+  getActiveAppSubscriptions(input: {
+    shopDomain: string;
+  }): Promise<ShopifyAppSubscription[]>;
 }
 
 export interface BillingService {

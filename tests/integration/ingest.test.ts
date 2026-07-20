@@ -199,13 +199,59 @@ integration("webhook queue reliability", () => {
       }),
     ).toEqual({ status: EventStatus.DEAD, attempts: 15 });
 
-    expect(await requeueDeadEvents(prisma)).toBe(1);
+    expect(await requeueDeadEvents({ client: prisma })).toBe(1);
     expect(
       await prisma.webhookEvent.findUnique({
         where: { shopifyWebhookId: "dead-letter" },
         select: { status: true, attempts: true, lastError: true },
       }),
     ).toEqual({ status: EventStatus.PENDING, attempts: 0, lastError: null });
+  });
+
+  it("requeues DEAD events only for the authenticated shop scope", async () => {
+    const otherDomain = "phase1-other.myshopify.com";
+    await prisma.shop.create({ data: { shopDomain: otherDomain } });
+    await enqueueWebhook(
+      {
+        shopDomain,
+        topic: "orders/create",
+        shopifyWebhookId: "dead-current-shop",
+        payload: { id: 1001 },
+        receivedAt: baseTime,
+      },
+      prisma,
+    );
+    await enqueueWebhook(
+      {
+        shopDomain: otherDomain,
+        topic: "orders/create",
+        shopifyWebhookId: "dead-other-shop",
+        payload: { id: 2001 },
+        receivedAt: baseTime,
+      },
+      prisma,
+    );
+    await prisma.webhookEvent.updateMany({
+      where: {
+        shopifyWebhookId: { in: ["dead-current-shop", "dead-other-shop"] },
+      },
+      data: { status: EventStatus.DEAD, attempts: 15 },
+    });
+
+    expect(await requeueDeadEvents({ client: prisma, shopDomain })).toBe(1);
+    expect(
+      await prisma.webhookEvent.findMany({
+        where: {
+          shopifyWebhookId: { in: ["dead-current-shop", "dead-other-shop"] },
+        },
+        orderBy: { shopifyWebhookId: "asc" },
+        select: { shopifyWebhookId: true, status: true },
+      }),
+    ).toEqual([
+      { shopifyWebhookId: "dead-current-shop", status: EventStatus.PENDING },
+      { shopifyWebhookId: "dead-other-shop", status: EventStatus.DEAD },
+    ]);
+    await prisma.shop.delete({ where: { shopDomain: otherDomain } });
   });
 
   it("counts a stuck processing reclaim as an attempt and eventually DEAD", async () => {

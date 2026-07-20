@@ -9,6 +9,7 @@ import { runDailyDigests } from "../digest/digest.server";
 import { logger } from "../logger.server";
 import { registerComplianceTopicHandlers } from "../compliance/gdpr.server";
 import { runRetentionPrune } from "../retention/prune.server";
+import { registerSubscriptionTopicHandler } from "../billing/subscriptions.server";
 
 const WORKER_INTERVAL_MS = 2_000;
 const RECONCILE_INTERVAL_MS = 15 * 60_000;
@@ -30,6 +31,7 @@ const workerState = globalThis as typeof globalThis & {
 
 registerRuleTopicHandlers();
 registerComplianceTopicHandlers();
+registerSubscriptionTopicHandler();
 
 export async function drainWebhookQueue(): Promise<void> {
   if (workerState.__alertProofWorkerDrain) {

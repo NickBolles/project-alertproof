@@ -83,7 +83,10 @@ export async function escalateDueDeliveries(
           DeliveryStatus.DEFERRED,
         ],
       },
-      alert: { kind: "RULE", ruleId: { not: null } },
+      alert: {
+        kind: "RULE",
+        rule: { is: { escalation: { not: Prisma.DbNull } } },
+      },
     },
     include: {
       recipient: true,

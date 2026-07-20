@@ -9,6 +9,7 @@ import prisma from "../../app/db.server";
 import { createAdapters } from "../../app/lib/adapters/index.server";
 import { FakeClock } from "../../app/lib/adapters/clock/fake.server";
 import { MockShopifyAdmin } from "../../app/lib/adapters/shopify-admin/mock.server";
+import { RealShopifyAdmin } from "../../app/lib/adapters/shopify-admin/real.server";
 import { AlertDispatcher } from "../../app/lib/delivery/dispatch.server";
 import { PrismaDeliveryLogStore } from "../../app/lib/delivery/log.server";
 import { parseEnv } from "../../app/lib/env.server";
@@ -26,6 +27,8 @@ import {
 import { action as cronAction } from "../../app/routes/internal.cron.$job";
 import { validEnv } from "../helpers/env";
 import { MemoryOutbox } from "../helpers/memory";
+import ordersFixture from "../fixtures/providers/shopify-orders-page.json";
+import mutationsFixture from "../fixtures/providers/shopify-mutations.json";
 
 const integration = describe.skipIf(!process.env.TEST_DATABASE_URL);
 const shopDomain = "phase4-fixture.myshopify.com";
@@ -179,6 +182,97 @@ integration("reconciliation, writeback, and durable dedupe retention", () => {
     expect(await prisma.alert.count({ where: { shopId: "phase4-shop" } })).toBe(
       1,
     );
+  });
+
+  it("matches numeric webhook identities against GID GraphQL orders and writes back with a GID owner", async () => {
+    for (const [topic, webhookId, payload] of [
+      ["orders/create", "gid-contract-create", { id: 4001, name: "#4001" }],
+      ["orders/paid", "gid-contract-paid", { id: 4001, name: "#4001" }],
+      ["refunds/create", "gid-contract-refund", { id: 9001, order_id: 4001 }],
+    ] as const) {
+      await enqueueWebhook(
+        {
+          shopDomain,
+          topic,
+          shopifyWebhookId: webhookId,
+          payload,
+          receivedAt: installedAt,
+        },
+        prisma,
+      );
+    }
+    const calls: Array<{ query: string; variables?: Record<string, unknown> }> =
+      [];
+    const admin = new RealShopifyAdmin(async (_shop, query, variables) => {
+      calls.push({ query, variables });
+      if (query.includes("query ReconcileOrders")) {
+        return Response.json(ordersFixture);
+      }
+      if (query.includes("metafieldsSet")) {
+        return Response.json(mutationsFixture.metafieldsSet);
+      }
+      if (query.includes("query AlertProofOrderNote")) {
+        return Response.json(mutationsFixture.orderNote);
+      }
+      return Response.json(mutationsFixture.orderUpdate);
+    });
+
+    await expect(
+      reconcileShop({
+        shopId: "phase4-shop",
+        shopifyAdmin: admin,
+        client: prisma,
+        clock: new FakeClock(new Date("2026-07-20T12:15:00Z")),
+      }),
+    ).resolves.toEqual({ ordersChecked: 1, missedFound: 0 });
+    expect(
+      await prisma.webhookEvent.count({
+        where: { shopDomain, source: EventSource.RECONCILIATION },
+      }),
+    ).toBe(0);
+
+    const alert = await prisma.alert.create({
+      data: {
+        id: "gid-contract-alert",
+        shopId: "phase4-shop",
+        dedupeKey: "gid-contract-writeback",
+        orderId: "4001",
+        writebackNextAt: installedAt,
+      },
+    });
+    await prisma.delivery.create({
+      data: {
+        alertId: alert.id,
+        recipientId: "phase4-recipient",
+        messageKey: alert.dedupeKey,
+        destination: "mock://ops",
+        channel: "EMAIL",
+        status: DeliveryStatus.DELIVERED,
+      },
+    });
+    await expect(
+      processPendingWritebacks({
+        shopifyAdmin: admin,
+        client: prisma,
+        clock: new FakeClock(new Date("2026-07-20T12:16:00Z")),
+      }),
+    ).resolves.toEqual({ processed: 1, failed: 0, deferred: 0 });
+    const metafieldCall = calls.find(({ query }) =>
+      query.includes("metafieldsSet"),
+    );
+    const noteQuery = calls.find(({ query }) =>
+      query.includes("query AlertProofOrderNote"),
+    );
+    const noteMutation = calls.find(({ query }) =>
+      query.includes("orderUpdate"),
+    );
+    expect(metafieldCall?.variables).toMatchObject({
+      metafields: [{ ownerId: "gid://shopify/Order/4001" }],
+    });
+    expect(noteQuery?.variables).toEqual({ id: "gid://shopify/Order/4001" });
+    expect(noteMutation?.variables).toMatchObject({
+      input: { id: "gid://shopify/Order/4001" },
+    });
   });
 
   it("derives per-topic/refund expectations and adds only a new second refund", async () => {

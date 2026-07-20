@@ -55,7 +55,7 @@ describe("Phase 6 billing and entitlement matrix", () => {
     expect(isOverOrderLimit(Plan.FREE, 51)).toBe(true);
   });
 
-  it("treats an active trial as Standard using the supplied clock", () => {
+  it("grants Standard to a Free trial without capping a paid Pro plan", () => {
     const now = new Date("2026-07-20T12:00:00Z");
     expect(
       effectivePlanForShop(
@@ -69,6 +69,12 @@ describe("Phase 6 billing and entitlement matrix", () => {
         now,
       ),
     ).toBe(Plan.FREE);
+    expect(
+      effectivePlanForShop(
+        { plan: Plan.PRO, trialEndsAt: new Date("2026-07-21T12:00:00Z") },
+        now,
+      ),
+    ).toBe(Plan.PRO);
   });
 
   it("activates mock upgrades instantly and generates managed-pricing redirects", async () => {

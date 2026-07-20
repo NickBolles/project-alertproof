@@ -8,6 +8,8 @@ import type {
 import { PrismaDeliveryLogStore } from "./log.server";
 import { logger } from "../logger.server";
 
+export class ProviderWebhookAuthenticationError extends Error {}
+
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
@@ -22,7 +24,9 @@ export async function handleProviderStatusWebhook(input: {
     throw new Error(`${input.adapter.kind} does not support status callbacks`);
   }
   if (!(await input.adapter.verifyStatusWebhook(input.webhook))) {
-    throw new Error("Invalid provider webhook authentication");
+    throw new ProviderWebhookAuthenticationError(
+      "Invalid provider webhook authentication",
+    );
   }
   const event = await input.adapter.parseStatusEvent(input.webhook);
   const client = input.client ?? prisma;
@@ -30,19 +34,22 @@ export async function handleProviderStatusWebhook(input: {
     data: {
       provider: event.provider,
       providerMessageId: event.providerMessageId,
-      type: event.status,
+      type: event.type,
       payload: json(event.detail),
       receivedAt: event.occurredAt,
     },
   });
-  const matched = await (
-    input.store ?? new PrismaDeliveryLogStore(client)
-  ).updateStatus(event);
+  const matched = event.status
+    ? await (input.store ?? new PrismaDeliveryLogStore(client)).updateStatus({
+        ...event,
+        status: event.status,
+      })
+    : false;
   await client.providerEvent.update({
     where: { id: providerEvent.id },
     data: { processedAt: new Date() },
   });
-  if (!matched) {
+  if (!matched && event.status) {
     logger.warn("provider_status.unmatched", {
       provider: event.provider,
       providerMessageId: event.providerMessageId,

@@ -1,0 +1,5 @@
+{
+  "metafieldsSet": { "data": { "metafieldsSet": { "userErrors": [] } } },
+  "orderNote": { "data": { "order": { "note": "Merchant note" } } },
+  "orderUpdate": { "data": { "orderUpdate": { "userErrors": [] } } }
+}

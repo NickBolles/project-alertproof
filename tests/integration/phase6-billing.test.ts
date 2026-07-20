@@ -16,6 +16,12 @@ import { enqueueWebhook } from "../../app/lib/ingest/enqueue.server";
 import { processRulesForEvent } from "../../app/lib/rules/handlers.server";
 import { saveRule } from "../../app/lib/ui/forms.server";
 import { MemoryOutbox } from "../helpers/memory";
+import { MockShopifyAdmin } from "../../app/lib/adapters/shopify-admin/mock.server";
+import {
+  processSubscriptionUpdateEvent,
+  reconcileShopSubscription,
+} from "../../app/lib/billing/subscriptions.server";
+import subscriptionWebhookFixture from "../fixtures/providers/shopify-subscription-webhooks.json";
 
 const integration = describe.skipIf(!process.env.TEST_DATABASE_URL);
 const shopId = "phase6-shop";
@@ -173,6 +179,70 @@ integration("Phase 6 server-side gating", () => {
     });
     expect(await saveRule(shopId, form, prisma, now)).toMatchObject({
       ok: true,
+    });
+  });
+
+  it("projects subscription webhooks and activeSubscriptions reconciliation into Shop.plan", async () => {
+    const store = new PrismaShopPlanStore(prisma);
+    const active = await prisma.webhookEvent.create({
+      data: {
+        shopDomain,
+        topic: "app_subscriptions/update",
+        shopifyWebhookId: "subscription-active",
+        payload: subscriptionWebhookFixture.active,
+      },
+    });
+    await processSubscriptionUpdateEvent(active, { prisma }, store);
+    expect(
+      await prisma.shop.findUnique({ where: { id: shopId } }),
+    ).toMatchObject({
+      plan: Plan.PRO,
+      billingChargeId: "gid://shopify/AppSubscription/6001",
+    });
+
+    const cancelled = await prisma.webhookEvent.create({
+      data: {
+        shopDomain,
+        topic: "app_subscriptions/update",
+        shopifyWebhookId: "subscription-cancelled",
+        payload: subscriptionWebhookFixture.cancelled,
+      },
+    });
+    await processSubscriptionUpdateEvent(cancelled, { prisma }, store);
+    expect(
+      await prisma.shop.findUnique({ where: { id: shopId } }),
+    ).toMatchObject({
+      plan: Plan.FREE,
+      billingChargeId: null,
+    });
+
+    const admin = new MockShopifyAdmin({
+      subscriptions: {
+        [shopDomain]: [
+          {
+            id: "gid://shopify/AppSubscription/6002",
+            name: "AlertProof Standard",
+            status: "ACTIVE",
+          },
+        ],
+      },
+    });
+    await expect(
+      reconcileShopSubscription({
+        shopId,
+        shopDomain,
+        shopifyAdmin: admin,
+        planStore: store,
+      }),
+    ).resolves.toEqual({
+      plan: "STANDARD",
+      billingChargeId: "gid://shopify/AppSubscription/6002",
+    });
+    expect(
+      await prisma.shop.findUnique({ where: { id: shopId } }),
+    ).toMatchObject({
+      plan: Plan.STANDARD,
+      billingChargeId: "gid://shopify/AppSubscription/6002",
     });
   });
 });

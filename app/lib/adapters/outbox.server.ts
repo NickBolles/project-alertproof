@@ -39,8 +39,10 @@ export class PrismaOutboxWriter implements OutboxWriter {
 }
 
 export class PrismaShopPlanStore implements ShopPlanStore {
+  constructor(private readonly client = prisma) {}
+
   async get(shopId: string): Promise<BillingPlan | null> {
-    const shop = await prisma.shop.findUnique({
+    const shop = await this.client.shop.findUnique({
       where: { id: shopId },
       select: { plan: true },
     });
@@ -52,9 +54,9 @@ export class PrismaShopPlanStore implements ShopPlanStore {
     plan: BillingPlan,
     billingChargeId?: string,
   ): Promise<void> {
-    await prisma.shop.update({
+    await this.client.shop.update({
       where: { id: shopId },
-      data: { plan, billingChargeId },
+      data: { plan, billingChargeId: billingChargeId ?? null },
     });
   }
 }

@@ -147,6 +147,7 @@ async function createAlerts(
             configured && access.allowed && !skippedByUsage
               ? null
               : input.event.receivedAt,
+          nextAttemptAt: input.event.receivedAt,
           lastError: input.skipAllReason
             ? input.skipAllReason
             : !access.allowed

@@ -21,6 +21,8 @@ import { MockShopifyAdmin } from "./shopify-admin/mock.server";
 import { RealShopifyAdmin } from "./shopify-admin/real.server";
 import { MockSmsProvider } from "./sms/mock.server";
 import { TwilioSmsProvider } from "./sms/twilio.server";
+import { isAuthBypassArmed } from "../auth-bypass.server";
+import { logger } from "../logger.server";
 
 export type AdapterFactoryDependencies = {
   outbox?: OutboxWriter;
@@ -40,8 +42,35 @@ export function createAdapters(
   const clock = dependencies.clock ?? new DateClock();
   const outbox = dependencies.outbox ?? new PrismaOutboxWriter();
   const planStore = dependencies.planStore ?? new PrismaShopPlanStore();
-  const mockEmail = new MockEmailProvider(outbox, clock, config.CRON_SECRET);
-  const mockSms = new MockSmsProvider(outbox, clock);
+  const mockStatusEmitter = (path: string) =>
+    isAuthBypassArmed(config)
+      ? (payload: Record<string, string>) => {
+          const timer = setTimeout(() => {
+            void fetch(new URL(path, config.SHOPIFY_APP_URL), {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${config.CRON_SECRET}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify(payload),
+            }).catch((error) =>
+              logger.warn("mock_status.emit_failed", { path, error }),
+            );
+          }, 1_000);
+          timer.unref?.();
+        }
+      : undefined;
+  const mockEmail = new MockEmailProvider(
+    outbox,
+    clock,
+    config.CRON_SECRET,
+    mockStatusEmitter("/webhooks/email-status"),
+  );
+  const mockSms = new MockSmsProvider(
+    outbox,
+    clock,
+    mockStatusEmitter("/webhooks/sms-status"),
+  );
   const mockSlack = new MockChatProvider("slack", outbox, clock);
   const mockDiscord = new MockChatProvider("discord", outbox, clock);
   const realEmail = config.POSTMARK_API_TOKEN

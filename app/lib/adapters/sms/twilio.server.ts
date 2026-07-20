@@ -108,6 +108,7 @@ export class TwilioSmsProvider implements AlertChannelAdapter {
       provider: "twilio",
       providerMessageId,
       status,
+      type: providerStatus,
       occurredAt: this.clock.now(),
       detail: Object.fromEntries(form.entries()),
     };

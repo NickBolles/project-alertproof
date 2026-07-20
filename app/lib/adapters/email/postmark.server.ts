@@ -82,8 +82,9 @@ export class PostmarkEmailProvider implements AlertChannelAdapter {
           ? "deferred"
           : recordType.toLowerCase() === "bounce"
             ? "bounced"
-            : null;
-    if (!status) throw new Error(`Unsupported Postmark event: ${recordType}`);
+            : recordType.toLowerCase() === "spamcomplaint"
+              ? "bounced"
+              : null;
     const occurred =
       value.DeliveredAt ??
       value.BouncedAt ??
@@ -93,6 +94,7 @@ export class PostmarkEmailProvider implements AlertChannelAdapter {
       provider: "postmark",
       providerMessageId,
       status,
+      type: recordType || "Unknown",
       occurredAt:
         typeof occurred === "string" ? new Date(occurred) : new Date(),
       detail: value,

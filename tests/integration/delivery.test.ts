@@ -9,14 +9,17 @@ import {
   reclaimStuckDeliveries,
 } from "../../app/lib/delivery/log.server";
 import { handleProviderStatusWebhook } from "../../app/lib/delivery/status.server";
+import { PostmarkEmailProvider } from "../../app/lib/adapters/email/postmark.server";
 import { parseEnv } from "../../app/lib/env.server";
 import type { AlertChannelAdapter } from "../../app/lib/ports";
 import { validEnv } from "../helpers/env";
 import { MemoryOutbox } from "../helpers/memory";
+import postmarkFixture from "../fixtures/providers/postmark-events.json";
+import { handleEmailStatusRequest } from "../../app/lib/delivery/email-status-route.server";
 
 const integration = describe.skipIf(!process.env.TEST_DATABASE_URL);
 const shopDomain = "phase3-fixture.myshopify.com";
-const now = new Date("2026-07-20T12:00:00.000Z");
+const now = new Date("2026-07-20T23:00:00.000Z");
 
 async function seedRoute(client: PrismaClient, suffix: string) {
   const shop = await client.shop.findUniqueOrThrow({ where: { shopDomain } });
@@ -83,7 +86,7 @@ integration("delivery persistence and dispatch", () => {
     expect(left.length + right.length).toBe(1);
   });
 
-  it("dispatches one mock send and auto-confirms delivery", async () => {
+  it("dispatches mock email as SENT until a provider callback confirms it", async () => {
     const route = await seedRoute(prisma, "1002");
     const store = new PrismaDeliveryLogStore(prisma);
     await store.record(route);
@@ -102,11 +105,62 @@ integration("delivery persistence and dispatch", () => {
     expect(result).toMatchObject({ claimed: 1, sent: 1, failed: 0 });
     expect(outbox.records).toHaveLength(1);
     expect(await prisma.delivery.findFirst()).toMatchObject({
-      status: DeliveryStatus.DELIVERED,
+      status: DeliveryStatus.SENT,
       attempts: 1,
     });
     await new AlertDispatcher(store, prisma, adapters, clock).dispatch();
     expect(outbox.records).toHaveLength(1);
+  });
+
+  it("acknowledges and audits unsupported Postmark records and maps SpamComplaint to BOUNCED", async () => {
+    const route = await seedRoute(prisma, "postmark-callbacks");
+    const store = new PrismaDeliveryLogStore(prisma);
+    const delivery = await store.record(route);
+    await prisma.delivery.update({
+      where: { id: delivery.id },
+      data: {
+        status: DeliveryStatus.SENT,
+        providerMessageId: postmarkFixture.spamComplaint.MessageID,
+      },
+    });
+    const secret = "callback-user:callback-pass";
+    const adapter = new PostmarkEmailProvider("token", secret);
+    const request = (payload: unknown) =>
+      new Request("http://localhost/webhooks/email-status", {
+        method: "POST",
+        headers: {
+          authorization: `Basic ${Buffer.from(secret).toString("base64")}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+    const complaint = await handleEmailStatusRequest(
+      request(postmarkFixture.spamComplaint),
+      adapter,
+    );
+    expect(complaint.status).toBe(200);
+    expect(
+      await prisma.delivery.findUnique({ where: { id: delivery.id } }),
+    ).toMatchObject({
+      status: DeliveryStatus.BOUNCED,
+    });
+    const open = await handleEmailStatusRequest(
+      request(postmarkFixture.open),
+      adapter,
+    );
+    expect(open.status).toBe(200);
+    await expect(open.json()).resolves.toEqual({
+      accepted: true,
+      matched: false,
+    });
+    expect(
+      await prisma.providerEvent.findMany({
+        where: { provider: "postmark" },
+        orderBy: { receivedAt: "asc" },
+        select: { type: true },
+      }),
+    ).toEqual([{ type: "SpamComplaint" }, { type: "Open" }]);
   });
 
   it("backs off and fails after at most three adapter attempts", async () => {

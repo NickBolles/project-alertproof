@@ -228,10 +228,14 @@ export async function processPending(
 }
 
 export async function requeueDeadEvents(
-  client: PrismaClient = prisma,
+  input: { client?: PrismaClient; shopDomain?: string } = {},
 ): Promise<number> {
+  const client = input.client ?? prisma;
   const result = await client.webhookEvent.updateMany({
-    where: { status: EventStatus.DEAD },
+    where: {
+      status: EventStatus.DEAD,
+      shopDomain: input.shopDomain,
+    },
     data: {
       status: EventStatus.PENDING,
       attempts: 0,

@@ -1,0 +1,6 @@
+{
+  "callbackUrl": "https://app.example/webhooks/sms-status",
+  "body": "MessageSid=SM4001&MessageStatus=undelivered",
+  "providerMessageId": "SM4001",
+  "expectedStatus": "bounced"
+}

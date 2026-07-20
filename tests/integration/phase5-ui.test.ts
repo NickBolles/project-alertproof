@@ -85,7 +85,7 @@ integration("Phase 5 real service UI flows", () => {
     });
     expect(alerts).toHaveLength(1);
     expect(alerts[0].deliveries[0]).toMatchObject({
-      status: DeliveryStatus.DELIVERED,
+      status: DeliveryStatus.SENT,
     });
     expect(outbox.records).toHaveLength(1);
     expect(

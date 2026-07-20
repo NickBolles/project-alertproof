@@ -141,6 +141,60 @@ integration("Phase 7 escalation and digest idempotency", () => {
     });
   });
 
+  it("does not let 100 non-escalating stale deliveries starve a due escalation", async () => {
+    const recipient = await prisma.recipient.create({
+      data: {
+        id: "phase7-starvation-recipient",
+        shopId,
+        name: "Ops",
+        email: "ops@example.test",
+        slackWebhookUrlEnc: "mock://slack",
+      },
+    });
+    const noEscalationRule = await prisma.rule.create({
+      data: {
+        id: "phase7-starvation-no-escalation",
+        shopId,
+        name: "No escalation",
+        trigger: Trigger.ORDER_CREATED,
+      },
+    });
+    const staleAlerts = Array.from({ length: 101 }, (_, index) => ({
+      id: `phase7-starvation-alert-${index}`,
+      shopId,
+      ruleId: noEscalationRule.id,
+      dedupeKey: `phase7-starvation:${index}`,
+      firedAt: new Date(now.getTime() - 2 * 60 * 60_000),
+      writebackPending: false,
+    }));
+    await prisma.alert.createMany({ data: staleAlerts });
+    await prisma.delivery.createMany({
+      data: staleAlerts.map((alert, index) => ({
+        id: `phase7-starvation-delivery-${index}`,
+        alertId: alert.id,
+        recipientId: recipient.id,
+        channel: Channel.EMAIL,
+        messageKey: alert.dedupeKey,
+        destination: recipient.email!,
+        status: DeliveryStatus.BOUNCED,
+        statusAt: new Date(now.getTime() - 2 * 60 * 60_000),
+      })),
+    });
+    const due = await createSource({
+      suffix: "behind-starvation-backlog",
+      status: DeliveryStatus.BOUNCED,
+    });
+
+    expect(
+      await escalateDueDeliveries({ client: prisma, now, limit: 100 }),
+    ).toMatchObject({ scanned: 1, created: 1, skipped: 0 });
+    expect(
+      await prisma.delivery.findUnique({
+        where: { escalatedFromId: due.id },
+      }),
+    ).toMatchObject({ isEscalation: true, channel: Channel.SLACK });
+  });
+
   it("running the digest cron twice creates one shop-local digest delivery", async () => {
     const recipient = await prisma.recipient.create({
       data: {

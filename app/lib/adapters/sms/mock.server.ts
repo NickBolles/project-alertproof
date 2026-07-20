@@ -15,6 +15,11 @@ export class MockSmsProvider implements AlertChannelAdapter {
   constructor(
     private readonly outbox: OutboxWriter,
     private readonly clock: { now(): Date },
+    private readonly emitDelivered?: (input: {
+      providerMessageId: string;
+      status: "delivered";
+      occurredAt: string;
+    }) => void,
   ) {}
 
   async send(message: AlertMessage): Promise<ProviderSendResult> {
@@ -24,6 +29,11 @@ export class MockSmsProvider implements AlertChannelAdapter {
       to: message.destination,
       deliveryId: message.deliveryId,
       payload: { ...message.payload, providerMessageId },
+    });
+    this.emitDelivered?.({
+      providerMessageId,
+      status: "delivered",
+      occurredAt: new Date(this.clock.now().getTime() + 1_000).toISOString(),
     });
     return { providerMessageId, acceptedAt: this.clock.now() };
   }
@@ -42,6 +52,7 @@ export class MockSmsProvider implements AlertChannelAdapter {
       provider: "mock",
       providerMessageId: value.providerMessageId,
       status: value.status ?? "delivered",
+      type: value.status ?? "delivered",
       occurredAt: value.occurredAt
         ? new Date(value.occurredAt)
         : this.clock.now(),

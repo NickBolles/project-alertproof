@@ -1,0 +1,35 @@
+{
+  "data": {
+    "orders": {
+      "nodes": [
+        {
+          "id": "gid://shopify/Order/4001",
+          "legacyResourceId": "4001",
+          "name": "#4001",
+          "createdAt": "2026-07-20T12:00:00.000Z",
+          "updatedAt": "2026-07-20T12:05:00.000Z",
+          "displayFinancialStatus": "PARTIALLY_REFUNDED",
+          "currentTotalPriceSet": { "shopMoney": { "amount": "250.00" } },
+          "refunds": {
+            "nodes": [
+              {
+                "id": "gid://shopify/Refund/9001",
+                "createdAt": "2026-07-20T12:04:00.000Z"
+              }
+            ]
+          },
+          "lineItems": {
+            "nodes": [
+              {
+                "title": "Widget",
+                "product": { "id": "gid://shopify/Product/7001" },
+                "variant": { "id": "gid://shopify/ProductVariant/8001" }
+              }
+            ]
+          }
+        }
+      ],
+      "pageInfo": { "hasNextPage": false, "endCursor": "cursor-1" }
+    }
+  }
+}
