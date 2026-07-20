@@ -38,6 +38,8 @@ export type ProviderSendResult = {
 export type StatusWebhook = {
   body: string;
   headers: Readonly<Record<string, string>>;
+  /** Exact public callback URL used by providers that sign the request URL. */
+  url?: string;
 };
 
 export type ProviderStatusEvent = {

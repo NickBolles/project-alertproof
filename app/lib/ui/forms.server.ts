@@ -5,6 +5,7 @@ import { encryptSecret } from "../crypto.server";
 import { env } from "../env.server";
 import {
   effectivePlanForShop,
+  featuresForShop,
   ruleCapacityForPlan,
 } from "../billing/plans.server";
 
@@ -29,6 +30,8 @@ export const recipientInputSchema = z.object({
       .regex(/^\+[1-9]\d{7,14}$/, "Use E.164 format")
       .optional(),
   ),
+  digestEnabled: z.boolean().default(false),
+  digestHourLocal: z.coerce.number().int().min(0).max(23).default(8),
 });
 
 const triggerSchema = z.nativeEnum(Trigger);
@@ -44,6 +47,8 @@ export const ruleInputSchema = z
     stockThreshold: z.string().trim().optional(),
     productIds: z.string().optional(),
     collectionIds: z.string().optional(),
+    escalationAfterMinutes: z.string().trim().optional(),
+    escalationChannel: channelSchema.optional(),
     routes: z.array(
       z.object({ recipientId: z.string().min(1), channel: channelSchema }),
     ),
@@ -76,6 +81,27 @@ export const ruleInputSchema = z
         message: "Select at least one recipient and channel",
       });
     }
+    if (
+      Boolean(value.escalationAfterMinutes) !== Boolean(value.escalationChannel)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["escalationAfterMinutes"],
+        message: "Set both an escalation delay and backup channel",
+      });
+    }
+    if (
+      value.escalationAfterMinutes &&
+      (!/^\d+$/.test(value.escalationAfterMinutes) ||
+        Number(value.escalationAfterMinutes) < 1 ||
+        Number(value.escalationAfterMinutes) > 10_080)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["escalationAfterMinutes"],
+        message: "Escalation delay must be between 1 minute and 7 days",
+      });
+    }
   });
 
 export type FormResult =
@@ -103,10 +129,24 @@ export async function saveRecipient(
   shopId: string,
   form: FormData,
   client: PrismaClient = prisma,
+  now = new Date(),
 ): Promise<FormResult> {
-  const parsed = recipientInputSchema.safeParse(Object.fromEntries(form));
+  const parsed = recipientInputSchema.safeParse({
+    ...Object.fromEntries(form),
+    digestEnabled: form.get("digestEnabled") === "true",
+  });
   if (!parsed.success) return errors(parsed.error);
   const value = parsed.data;
+  const shop = await client.shop.findUniqueOrThrow({
+    where: { id: shopId },
+    select: { plan: true, trialEndsAt: true },
+  });
+  if (value.digestEnabled && !featuresForShop(shop, now).digest) {
+    return {
+      ok: false,
+      errors: { digestEnabled: ["Daily digests require the Pro plan"] },
+    };
+  }
   if (
     !value.email &&
     !value.slackWebhookUrl &&
@@ -126,6 +166,8 @@ export async function saveRecipient(
     slackWebhookUrlEnc: secret(value.slackWebhookUrl),
     discordWebhookUrlEnc: secret(value.discordWebhookUrl),
     phoneE164: value.phoneE164 ?? null,
+    digestEnabled: value.digestEnabled,
+    digestHourLocal: value.digestHourLocal,
   };
   const row = value.id
     ? await client.recipient.update({ where: { id: value.id, shopId }, data })
@@ -153,15 +195,23 @@ export async function saveRule(
   });
   if (!parsed.success) return errors(parsed.error);
   const value = parsed.data;
-  if (!value.id) {
-    const shop = await client.shop.findUniqueOrThrow({
-      where: { id: shopId },
-      select: {
-        plan: true,
-        trialEndsAt: true,
-        _count: { select: { rules: true } },
+  const shop = await client.shop.findUniqueOrThrow({
+    where: { id: shopId },
+    select: {
+      plan: true,
+      trialEndsAt: true,
+      _count: { select: { rules: true } },
+    },
+  });
+  if (value.escalationAfterMinutes && !featuresForShop(shop, now).escalation) {
+    return {
+      ok: false,
+      errors: {
+        escalationAfterMinutes: ["Escalation requires the Pro plan"],
       },
-    });
+    };
+  }
+  if (!value.id) {
     const capacity = ruleCapacityForPlan(
       effectivePlanForShop(shop, now),
       shop._count.rules,
@@ -202,6 +252,13 @@ export async function saveRule(
             trigger: value.trigger,
             enabled: value.enabled,
             conditions,
+            escalation:
+              value.escalationAfterMinutes && value.escalationChannel
+                ? {
+                    afterMinutes: Number(value.escalationAfterMinutes),
+                    channel: value.escalationChannel,
+                  }
+                : Prisma.DbNull,
           },
         })
       : await tx.rule.create({
@@ -211,6 +268,13 @@ export async function saveRule(
             trigger: value.trigger,
             enabled: value.enabled,
             conditions,
+            escalation:
+              value.escalationAfterMinutes && value.escalationChannel
+                ? {
+                    afterMinutes: Number(value.escalationAfterMinutes),
+                    channel: value.escalationChannel,
+                  }
+                : undefined,
           },
         });
     await tx.ruleRecipient.deleteMany({ where: { ruleId: rule.id } });

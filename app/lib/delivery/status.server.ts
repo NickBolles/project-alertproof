@@ -6,6 +6,7 @@ import type {
   StatusWebhook,
 } from "../ports";
 import { PrismaDeliveryLogStore } from "./log.server";
+import { logger } from "../logger.server";
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -42,7 +43,7 @@ export async function handleProviderStatusWebhook(input: {
     data: { processedAt: new Date() },
   });
   if (!matched) {
-    console.warn("Provider status callback did not match a delivery", {
+    logger.warn("provider_status.unmatched", {
       provider: event.provider,
       providerMessageId: event.providerMessageId,
     });

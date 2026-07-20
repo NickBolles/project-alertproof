@@ -9,6 +9,7 @@ export type RuleFormValue = {
   trigger: Trigger;
   enabled: boolean;
   conditions: Record<string, unknown>;
+  escalation?: { afterMinutes: number; channel: Channel } | null;
   routes: Array<{ recipientId: string; channels: Channel[] }>;
 };
 
@@ -26,12 +27,14 @@ export function RuleForm({
   value,
   errors,
   allowedChannels = Object.values(Channel),
+  escalationAllowed = true,
   authBypass = true,
 }: {
   recipients: RuleFormRecipient[];
   value?: RuleFormValue;
   errors?: Record<string, string[]>;
   allowedChannels?: readonly Channel[];
+  escalationAllowed?: boolean;
   authBypass?: boolean;
 }) {
   const selected = new Set(
@@ -158,6 +161,33 @@ export function RuleForm({
             })}
           </div>
         ))}
+      </fieldset>
+      <fieldset>
+        <legend>Escalation (Pro)</legend>
+        <s-text-field
+          name="escalationAfterMinutes"
+          label="Re-send if not delivered after (minutes)"
+          value={String(value?.escalation?.afterMinutes ?? "")}
+          disabled={!escalationAllowed}
+        />
+        <label>
+          Backup channel
+          <select
+            name="escalationChannel"
+            defaultValue={value?.escalation?.channel ?? ""}
+            disabled={!escalationAllowed}
+          >
+            <option value="">Disabled</option>
+            {Object.values(Channel).map((channel) => (
+              <option key={channel} value={channel}>
+                {channel}
+              </option>
+            ))}
+          </select>
+        </label>
+        {!escalationAllowed ? (
+          <s-paragraph>Upgrade to Pro to configure escalation.</s-paragraph>
+        ) : null}
       </fieldset>
       <s-button type="submit" variant="primary">
         Save rule

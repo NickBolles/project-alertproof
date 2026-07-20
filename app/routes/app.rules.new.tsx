@@ -29,6 +29,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       orderBy: { name: "asc" },
     }),
     allowedChannels: featuresForShop(shop).channels,
+    escalationAllowed: featuresForShop(shop).escalation,
     canCreate: ruleCapacityForPlan(effectivePlanForShop(shop), ruleCount)
       .allowed,
     authBypass: isAuthBypassArmed(env),
@@ -40,8 +41,13 @@ export async function action({ request }: ActionFunctionArgs) {
   return result.ok ? redirect(`/app/rules/${result.id}`) : result;
 }
 export default function NewRulePage() {
-  const { recipients, allowedChannels, canCreate, authBypass } =
-    useLoaderData<typeof loader>();
+  const {
+    recipients,
+    allowedChannels,
+    escalationAllowed,
+    canCreate,
+    authBypass,
+  } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   return (
     <s-page heading="Create rule">
@@ -55,6 +61,7 @@ export default function NewRulePage() {
         <RuleForm
           recipients={recipients}
           allowedChannels={allowedChannels}
+          escalationAllowed={escalationAllowed}
           authBypass={authBypass}
           errors={result && "errors" in result ? result.errors : undefined}
         />

@@ -14,7 +14,8 @@ import {
   PrismaDeliveryLogStore,
   reclaimStuckDeliveries,
 } from "./log.server";
-import { renderAlertMessage } from "./templates.server";
+import { renderAlertMessage, renderDigestMessage } from "./templates.server";
+import { logger } from "../logger.server";
 
 function plainDestination(value: string): string {
   return value.startsWith("v1:")
@@ -39,6 +40,12 @@ export class AlertDispatcher implements AlertDispatcherContract {
     let failed = 0;
 
     for (const delivery of claimed) {
+      logger.info("delivery.claimed", {
+        deliveryId: delivery.id,
+        alertId: delivery.alertId,
+        channel: delivery.channelType,
+        attempt: delivery.attempts,
+      });
       try {
         const destination = plainDestination(delivery.destination);
         const details = await this.client.delivery.findUniqueOrThrow({
@@ -47,21 +54,28 @@ export class AlertDispatcher implements AlertDispatcherContract {
             alert: { include: { shop: true, rule: true } },
           },
         });
-        const message = renderAlertMessage({
-          deliveryId: delivery.id,
-          messageKey: delivery.messageKey,
-          channelType: delivery.channelType,
-          destination,
-          shopDomain: details.alert.shop.shopDomain,
-          ruleName: details.alert.rule?.name,
-          orderId: details.alert.orderId,
-          orderName: details.alert.orderName,
-          orderValue: details.alert.orderValue?.toString(),
-        });
-        const adapter = this.adapters.channelFor(
-          delivery.channelType,
-          destination,
-        );
+        const message =
+          renderDigestMessage({
+            deliveryId: delivery.id,
+            messageKey: delivery.messageKey,
+            destination,
+            detail: details.providerDetail,
+          }) ??
+          renderAlertMessage({
+            deliveryId: delivery.id,
+            messageKey: delivery.messageKey,
+            channelType: delivery.channelType,
+            destination,
+            shopDomain: details.alert.shop.shopDomain,
+            ruleName: details.alert.rule?.name,
+            orderId: details.alert.orderId,
+            orderName: details.alert.orderName,
+            orderValue: details.alert.orderValue?.toString(),
+          });
+        const adapter =
+          delivery.channelType === "sms"
+            ? this.adapters.smsForShop(details.alert.shop.settings, destination)
+            : this.adapters.channelFor(delivery.channelType, destination);
         const result = await adapter.send(message);
         const terminal =
           adapter.kind === "mock" ||
@@ -76,7 +90,14 @@ export class AlertDispatcher implements AlertDispatcherContract {
           detail: { provider: adapter.kind, acceptedAt: result.acceptedAt },
           error: null,
         });
-        if (changed) sent += 1;
+        if (changed) {
+          sent += 1;
+          logger.info("delivery.sent", {
+            deliveryId: delivery.id,
+            provider: adapter.kind,
+            providerMessageId: result.providerMessageId,
+          });
+        }
       } catch (error) {
         const exhausted = delivery.attempts >= MAX_DELIVERY_ATTEMPTS;
         const delaySeconds = 30 * 2 ** Math.max(0, delivery.attempts - 1);
@@ -91,6 +112,11 @@ export class AlertDispatcher implements AlertDispatcherContract {
           error: error instanceof Error ? error.message : String(error),
         });
         if (changed && exhausted) failed += 1;
+        logger.error("delivery.failed", {
+          deliveryId: delivery.id,
+          exhausted,
+          error,
+        });
       }
     }
 

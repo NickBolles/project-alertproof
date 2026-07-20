@@ -7,6 +7,7 @@ import type {
   ShopPlanStore,
   ShopifyOrder,
 } from "../ports";
+import { decryptTwilioCredentials } from "../sms/credentials.server";
 import { MockBillingService } from "./billing/mock.server";
 import { ShopifyBillingService } from "./billing/shopify.server";
 import { MockChatProvider } from "./chat/mock.server";
@@ -57,6 +58,9 @@ export function createAdapters(
           config.TWILIO_ACCOUNT_SID,
           config.TWILIO_AUTH_TOKEN,
           config.TWILIO_FROM_NUMBER,
+          new URL("/webhooks/sms-status", config.SHOPIFY_APP_URL).toString(),
+          fetch,
+          clock,
         )
       : undefined;
 
@@ -87,6 +91,31 @@ export function createAdapters(
     return chatFor(channelType, destination);
   };
 
+  const smsForShop = (
+    settings: unknown,
+    destination = "",
+  ): AlertChannelAdapter => {
+    if (selectedMode.sms === "mock" && config.ALERTPROOF_FORCE_MOCKS) {
+      return mockSms;
+    }
+    if (destination.startsWith("mock://")) return mockSms;
+    const merchantCredentials = decryptTwilioCredentials(
+      settings,
+      config.ALERTPROOF_ENCRYPTION_KEY,
+    );
+    if (merchantCredentials) {
+      return new TwilioSmsProvider(
+        merchantCredentials.accountSid,
+        merchantCredentials.authToken,
+        merchantCredentials.fromNumber,
+        new URL("/webhooks/sms-status", config.SHOPIFY_APP_URL).toString(),
+        fetch,
+        clock,
+      );
+    }
+    return realSms ?? mockSms;
+  };
+
   return {
     mode: selectedMode,
     clock,
@@ -102,6 +131,7 @@ export function createAdapters(
         : new MockBillingService(planStore),
     chatFor,
     channelFor,
+    smsForShop,
   };
 }
 

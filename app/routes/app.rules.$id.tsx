@@ -1,3 +1,4 @@
+import type { Channel } from "@prisma/client";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { redirect, useActionData, useLoaderData } from "react-router";
 import { RuleForm } from "../components/RuleForm";
@@ -33,9 +34,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       enabled: rule.enabled,
       conditions: rule.conditions as Record<string, unknown>,
       routes: rule.recipients,
+      escalation: rule.escalation as {
+        afterMinutes: number;
+        channel: Channel;
+      } | null,
     },
     recipients,
     allowedChannels: featuresForShop(shop).channels,
+    escalationAllowed: featuresForShop(shop).escalation,
     authBypass: isAuthBypassArmed(env),
   };
 }
@@ -52,7 +58,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   return result.ok ? redirect(`/app/rules/${result.id}`) : result;
 }
 export default function EditRulePage() {
-  const { rule, recipients, allowedChannels, authBypass } =
+  const { rule, recipients, allowedChannels, escalationAllowed, authBypass } =
     useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   return (
@@ -62,6 +68,7 @@ export default function EditRulePage() {
           recipients={recipients}
           value={rule}
           allowedChannels={allowedChannels}
+          escalationAllowed={escalationAllowed}
           authBypass={authBypass}
           errors={result && "errors" in result ? result.errors : undefined}
         />

@@ -76,3 +76,48 @@ export function renderAlertMessage(
     payload,
   };
 }
+
+export function renderDigestMessage(input: {
+  deliveryId: string;
+  messageKey: string;
+  destination: string;
+  detail: unknown;
+}): AlertMessage | null {
+  if (
+    !input.detail ||
+    typeof input.detail !== "object" ||
+    Array.isArray(input.detail)
+  ) {
+    return null;
+  }
+  const detail = input.detail as {
+    kind?: unknown;
+    subject?: unknown;
+    text?: unknown;
+    html?: unknown;
+  };
+  if (
+    detail.kind !== "digest" ||
+    typeof detail.subject !== "string" ||
+    typeof detail.text !== "string" ||
+    typeof detail.html !== "string"
+  ) {
+    return null;
+  }
+  return {
+    deliveryId: input.deliveryId,
+    messageKey: input.messageKey,
+    channelType: "email",
+    destination: input.destination,
+    payload: {
+      from: process.env.EMAIL_FROM ?? "alerts@alertproof.test",
+      subject: detail.subject,
+      text: detail.text,
+      html: detail.html,
+      metadata: {
+        deliveryId: input.deliveryId,
+        messageKey: input.messageKey,
+      },
+    },
+  };
+}

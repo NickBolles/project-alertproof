@@ -8,6 +8,9 @@ import {
 import { dispatchPendingDeliveries } from "../lib/delivery/dispatch.server";
 import { reconcileAllShops } from "../lib/reconcile/reconcile.server";
 import { processPendingWritebacks } from "../lib/writeback/order.server";
+import { escalateDueDeliveries } from "../lib/escalation/escalate.server";
+import { runDailyDigests } from "../lib/digest/digest.server";
+import { runRetentionPrune } from "../lib/retention/prune.server";
 
 function authorized(request: Request): boolean {
   const supplied = request.headers
@@ -47,6 +50,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
   if (params.job === "requeue-dead") {
     return Response.json({ requeued: await requeueDeadEvents() });
+  }
+  if (params.job === "escalate") {
+    const escalation = await escalateDueDeliveries();
+    const delivery = await dispatchPendingDeliveries();
+    return Response.json({ escalation, delivery });
+  }
+  if (params.job === "digest") {
+    const digest = await runDailyDigests();
+    const delivery = await dispatchPendingDeliveries();
+    return Response.json({ digest, delivery });
+  }
+  if (params.job === "prune") {
+    return Response.json({ retention: await runRetentionPrune() });
   }
   return Response.json({ error: "Unknown cron job" }, { status: 404 });
 }

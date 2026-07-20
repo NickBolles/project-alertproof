@@ -1,11 +1,17 @@
-import prisma from "../db.server";
+import { getHealthSnapshot, type HealthSnapshot } from "../lib/health.server";
 
 export async function loader() {
-  const deadWebhookEvents = await prisma.webhookEvent.count({
-    where: { status: "DEAD" },
-  });
-  return Response.json(
-    { ok: deadWebhookEvents === 0, deadWebhookEvents },
-    { status: deadWebhookEvents === 0 ? 200 : 503 },
-  );
+  try {
+    const health = await getHealthSnapshot();
+    return Response.json(health, { status: health.ok ? 200 : 503 });
+  } catch {
+    return Response.json(
+      {
+        ok: false,
+        database: { ok: false },
+        queue: { depth: 0, dead: 0, oldestPendingAgeSeconds: null },
+      } satisfies HealthSnapshot,
+      { status: 503 },
+    );
+  }
 }

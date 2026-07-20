@@ -2,7 +2,7 @@
 
 > **Never miss an order again — staff alerts on every channel, with a delivery log that proves each one arrived.**
 
-**Status:** planning · **Priority:** #1 in portfolio · **Target:** $9–19/mo, first revenue in ~8 weeks
+**Status:** production-ready build · **Plans:** Free, Standard $9, Pro $19
 
 ## Why this exists
 
@@ -17,6 +17,8 @@ The product is the fix: rule-based multi-channel alerts (email/Slack/Discord/SMS
 ## Key docs
 
 - [`PLAN.md`](./PLAN.md) — full MVP spec: features, architecture, 6-week build plan, pricing, launch strategy, risks.
+- [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) — authoritative phased build contract.
+- [`docs/GOING_LIVE.md`](./docs/GOING_LIVE.md) — production credentials, deploy, cron, and app-review handoff.
 
 ## Phase 0 local development
 
@@ -32,6 +34,15 @@ npm run dev
 On Windows, native PostgreSQL is also supported: point `DATABASE_URL` at it and skip the
 Docker command. External provider credentials are optional; absent credentials select working
 MockOutbox-backed adapters. Real Shopify OAuth alone requires Partner credentials.
+
+With `ALERTPROOF_FORCE_MOCKS=1`, email, chat, and SMS are written to `MockOutbox`; the guarded
+`/dev/mock` screen can inspect sends and simulate provider results. The in-process worker handles
+queue draining, reconciliation, Pro escalation/digests, and retention. The same jobs can be
+invoked with a CRON bearer token under `/internal/cron/*`.
+
+Verification commands are `npm run typecheck`, `npm run lint`, `npm run build`, and `npm test`.
+The opt-in 500-event performance check requires a disposable database and
+`ALERTPROOF_PERF_TEST=1 npm run perf:sanity`.
 
 The authoritative implementation plan is [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md),
 with build-time decisions recorded in [`docs/DECISIONS.md`](./docs/DECISIONS.md).

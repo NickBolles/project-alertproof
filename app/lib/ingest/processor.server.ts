@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 import prisma from "../../db.server";
 import { canonicalizeTopic, SHOPIFY_TOPICS } from "./topics";
+import { logger } from "../logger.server";
 
 export const MAX_WEBHOOK_ATTEMPTS = 15;
 export const PROCESSING_LEASE_MS = 10 * 60 * 1_000;
@@ -163,6 +164,12 @@ export async function processPending(
   let dead = reclaimed.dead;
 
   for (const event of events) {
+    logger.info("webhook.claimed", {
+      eventId: event.id,
+      webhookId: event.shopifyWebhookId,
+      topic: event.topic,
+      attempt: event.attempts + 1,
+    });
     const handler =
       input.topicHandlers?.get(event.topic) ??
       handlers.get(event.topic) ??
@@ -178,6 +185,11 @@ export async function processPending(
         },
       });
       processed += result.count;
+      logger.info("webhook.processed", {
+        eventId: event.id,
+        webhookId: event.shopifyWebhookId,
+        topic: event.topic,
+      });
     } catch (error) {
       const attempts = event.attempts + 1;
       const isDead = attempts >= MAX_WEBHOOK_ATTEMPTS;
@@ -195,6 +207,14 @@ export async function processPending(
       });
       failed += result.count;
       if (isDead) dead += result.count;
+      logger.error("webhook.failed", {
+        eventId: event.id,
+        webhookId: event.shopifyWebhookId,
+        topic: event.topic,
+        attempts,
+        dead: isDead,
+        error,
+      });
     }
   }
 
