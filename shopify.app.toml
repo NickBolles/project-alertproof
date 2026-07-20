@@ -11,8 +11,12 @@ include_config_on_deploy = true
 api_version = "2026-07"
 
 [[webhooks.subscriptions]]
-topics = ["app/uninstalled"]
-uri = "/webhooks/app/uninstalled"
+topics = ["app/uninstalled", "inventory_levels/update", "orders/create", "orders/paid", "order_transactions/create", "refunds/create"]
+uri = "/webhooks/shopify"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "/webhooks/shopify"
 
 [access_scopes]
 scopes = "read_orders,write_orders,read_products,read_inventory"

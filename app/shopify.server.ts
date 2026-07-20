@@ -6,7 +6,9 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+import { createAdapters } from "./lib/adapters/index.server";
 import { env } from "./lib/env.server";
+import { provisionShop } from "./lib/ingest/provision.server";
 
 const shopify = shopifyApp({
   apiKey: env.SHOPIFY_API_KEY,
@@ -17,6 +19,14 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
+  hooks: {
+    afterAuth: async ({ session }) => {
+      await provisionShop({
+        shopDomain: session.shop,
+        shopifyAdmin: createAdapters().shopifyAdmin,
+      });
+    },
+  },
   future: { expiringOfflineAccessTokens: true },
 });
 

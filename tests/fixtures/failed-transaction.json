@@ -1,0 +1,10 @@
+{
+  "id": 6001,
+  "order_id": 1002,
+  "order_name": "#1002",
+  "kind": "sale",
+  "status": "failure",
+  "amount": "500.00",
+  "currency": "CAD",
+  "message": "Card declined"
+}

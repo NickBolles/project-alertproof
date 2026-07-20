@@ -4,8 +4,11 @@ import { ServerRouter } from "react-router";
 import type { EntryContext } from "react-router";
 import { renderToPipeableStream } from "react-dom/server";
 import { isbot } from "isbot";
+import { startWebhookWorker } from "./lib/ingest/worker.server";
 
 const ABORT_DELAY = 5_000;
+
+startWebhookWorker();
 
 export default function handleRequest(
   request: Request,

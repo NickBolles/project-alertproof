@@ -17,6 +17,7 @@
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run --configLoader=runner",
     "test:watch": "vitest",
+    "fire-webhook": "tsx scripts/fire-webhook.ts",
     "shopify": "shopify",
     "prisma": "prisma"
   },

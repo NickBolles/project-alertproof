@@ -1,0 +1,10 @@
+{
+  "id": 1002,
+  "name": "#1002",
+  "total_price": "500.00",
+  "currency": "CAD",
+  "financial_status": "paid",
+  "line_items": [
+    { "id": 3002, "product_id": 2002, "variant_id": 4002, "title": "Equipment" }
+  ]
+}
