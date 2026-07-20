@@ -18,6 +18,24 @@ The product is the fix: rule-based multi-channel alerts (email/Slack/Discord/SMS
 
 - [`PLAN.md`](./PLAN.md) — full MVP spec: features, architecture, 6-week build plan, pricing, launch strategy, risks.
 
+## Phase 0 local development
+
+Requirements: Node 20.19+ and PostgreSQL 16. Copy `.env.example` to `.env`, then run:
+
+```powershell
+docker compose up -d
+npm install
+npm run setup
+npm run dev
+```
+
+On Windows, native PostgreSQL is also supported: point `DATABASE_URL` at it and skip the
+Docker command. External provider credentials are optional; absent credentials select working
+MockOutbox-backed adapters. Real Shopify OAuth alone requires Partner credentials.
+
+The authoritative implementation plan is [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md),
+with build-time decisions recorded in [`docs/DECISIONS.md`](./docs/DECISIONS.md).
+
 ## Kickoff Prompt
 
 Paste this into Claude Code from the repo root to start:

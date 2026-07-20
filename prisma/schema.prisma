@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Shop {
+  id                 String              @id @default(cuid())
+  shopDomain         String              @unique
+  plan               Plan                @default(FREE)
+  installedAt        DateTime            @default(now())
+  trialEndsAt        DateTime?
+  billingChargeId    String?
+  timezone           String              @default("UTC")
+  reconcileCursor    DateTime?
+  settings           Json                @default("{}")
+  uninstalledAt      DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  rules              Rule[]
+  recipients         Recipient[]
+  alerts             Alert[]
+  webhookEvents      WebhookEvent[]
+  inventoryStates    InventoryState[]
+  reconciliationRuns ReconciliationRun[]
+  usageCounters      UsageCounter[]
+}
+
+model WebhookEvent {
+  id               String      @id @default(cuid())
+  shopDomain       String
+  topic            String
+  shopifyWebhookId String      @unique
+  source           EventSource @default(WEBHOOK)
+  orderId          String?
+  payload          Json?
+  status           EventStatus @default(PENDING)
+  attempts         Int         @default(0)
+  nextAttemptAt    DateTime    @default(now())
+  lastError        String?
+  receivedAt       DateTime    @default(now())
+  processedAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  shop             Shop        @relation(fields: [shopDomain], references: [shopDomain], onDelete: Cascade)
+  alerts           Alert[]
+
+  @@index([status, nextAttemptAt])
+  @@index([shopDomain, topic, orderId])
+  @@index([shopDomain, topic, receivedAt])
+}
+
+model Rule {
+  id         String          @id @default(cuid())
+  shopId     String
+  name       String
+  enabled    Boolean         @default(true)
+  trigger    Trigger
+  conditions Json            @default("{}")
+  escalation Json?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  shop       Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  recipients RuleRecipient[]
+  alerts     Alert[]
+
+  @@index([shopId])
+}
+
+model Recipient {
+  id                   String          @id @default(cuid())
+  shopId               String
+  name                 String
+  email                String?
+  slackWebhookUrlEnc   String?
+  discordWebhookUrlEnc String?
+  phoneE164            String?
+  digestEnabled        Boolean         @default(false)
+  digestHourLocal      Int             @default(8)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  shop                 Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  rules                RuleRecipient[]
+  deliveries           Delivery[]
+
+  @@index([shopId])
+}
+
+model RuleRecipient {
+  ruleId      String
+  recipientId String
+  channels    Channel[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  rule        Rule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  recipient   Recipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, recipientId])
+  @@index([recipientId])
+}
+
+model Alert {
+  id             String        @id @default(cuid())
+  shopId         String
+  kind           AlertKind     @default(RULE)
+  ruleId         String?
+  webhookEventId String?
+  dedupeKey      String
+  orderId        String?
+  orderName      String?
+  orderValue     Decimal?      @db.Decimal(18, 2)
+  firedAt        DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  rule           Rule?         @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  webhookEvent   WebhookEvent? @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
+  deliveries     Delivery[]
+
+  @@unique([webhookEventId, ruleId])
+  @@unique([shopId, dedupeKey])
+  @@index([shopId, orderId])
+  @@index([ruleId])
+}
+
+model Delivery {
+  id                String         @id @default(cuid())
+  alertId           String
+  recipientId       String
+  channel           Channel
+  status            DeliveryStatus @default(PENDING)
+  providerMessageId String?        @unique
+  providerDetail    Json?
+  attempts          Int            @default(0)
+  isEscalation      Boolean        @default(false)
+  escalatedFromId   String?        @unique
+  sentAt            DateTime?
+  statusAt          DateTime?
+  lastError         String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  alert             Alert          @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  recipient         Recipient      @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  escalatedFrom     Delivery?      @relation("DeliveryEscalation", fields: [escalatedFromId], references: [id], onDelete: SetNull)
+  escalation        Delivery?      @relation("DeliveryEscalation")
+
+  @@index([status, sentAt])
+  @@index([alertId])
+  @@index([recipientId])
+}
+
+model InventoryState {
+  shopId          String
+  inventoryItemId String
+  locationId      String
+  lastAvailable   Int
+  epoch           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@id([shopId, inventoryItemId, locationId])
+}
+
+model ProviderEvent {
+  id                String    @id @default(cuid())
+  provider          String
+  providerMessageId String?
+  type              String
+  payload           Json
+  receivedAt        DateTime  @default(now())
+  processedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([providerMessageId])
+}
+
+model ReconciliationRun {
+  id            String    @id @default(cuid())
+  shopId        String
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  cursor        DateTime
+  ordersChecked Int       @default(0)
+  missedFound   Int       @default(0)
+  error         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, startedAt])
+}
+
+model UsageCounter {
+  shopId          String
+  periodYYYYMM    String
+  ordersProcessed Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@id([shopId, periodYYYYMM])
+}
+
+model MockOutbox {
+  id         String   @id @default(cuid())
+  channel    String
+  to         String
+  payload    Json
+  deliveryId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+enum Plan {
+  FREE
+  STANDARD
+  PRO
+}
+
+enum EventSource {
+  WEBHOOK
+  RECONCILIATION
+  TEST
+}
+
+enum EventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+  DEAD
+}
+
+enum Trigger {
+  ORDER_CREATED
+  ORDER_PAID
+  ORDER_VALUE_GTE
+  PRODUCT_ORDERED
+  LOW_STOCK
+  REFUND_CREATED
+  PAYMENT_FAILED
+}
+
+enum Channel {
+  EMAIL
+  SLACK
+  DISCORD
+  SMS
+}
+
+enum AlertKind {
+  RULE
+  DIGEST
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  DEFERRED
+  FAILED
+  SKIPPED
+}
