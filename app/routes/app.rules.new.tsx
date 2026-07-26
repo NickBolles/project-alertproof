@@ -55,7 +55,7 @@ export default function NewRulePage() {
         {!canCreate ? (
           <s-banner tone="warning">
             Your plan&apos;s rule limit is reached.{" "}
-            <a href="/app/billing">Upgrade to add more rules.</a>
+            <s-link href="/app/billing">Upgrade to add more rules.</s-link>
           </s-banner>
         ) : null}
         <RuleForm
