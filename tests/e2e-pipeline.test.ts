@@ -24,7 +24,10 @@ import { signedShopifyWebhook } from "./helpers/webhook-signer";
 
 const e2e = describe.skipIf(!process.env.TEST_DATABASE_URL);
 const shopDomain = "e2e-pipeline.myshopify.com";
-const now = new Date("2026-07-20T23:00:00.000Z");
+// Delivery.nextAttemptAt is assigned by the database's `now()` default. Keep
+// the fake dispatcher clock ahead of that write so this test exercises the
+// queued delivery rather than a historical test timestamp.
+const now = new Date(Date.now() + 5 * 60_000);
 
 e2e("signed webhook to terminal delivery", () => {
   beforeEach(async () => {

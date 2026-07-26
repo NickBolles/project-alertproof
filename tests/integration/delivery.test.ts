@@ -19,7 +19,10 @@ import { handleEmailStatusRequest } from "../../app/lib/delivery/email-status-ro
 
 const integration = describe.skipIf(!process.env.TEST_DATABASE_URL);
 const shopDomain = "phase3-fixture.myshopify.com";
-const now = new Date("2026-07-20T23:00:00.000Z");
+// Delivery.nextAttemptAt is assigned by the database's `now()` default. Keep
+// the fake dispatcher clock ahead of that write so these tests exercise an
+// immediately eligible queued delivery instead of becoming date-dependent.
+const now = new Date(Date.now() + 5 * 60_000);
 
 async function seedRoute(client: PrismaClient, suffix: string) {
   const shop = await client.shop.findUniqueOrThrow({ where: { shopDomain } });
