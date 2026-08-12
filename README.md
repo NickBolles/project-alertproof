@@ -18,6 +18,7 @@ The product is the fix: rule-based multi-channel alerts (email/Slack/Discord/SMS
 
 - [`PLAN.md`](./PLAN.md) — full MVP spec: features, architecture, 6-week build plan, pricing, launch strategy, risks.
 - [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) — authoritative phased build contract.
+- [`docs/LAUNCH_PLAN.md`](./docs/LAUNCH_PLAN.md) — **current launch status, blockers, and the 2-day execution plan.**
 - [`docs/GOING_LIVE.md`](./docs/GOING_LIVE.md) — production credentials, deploy, cron, and app-review handoff.
 
 ## Phase 0 local development

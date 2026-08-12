@@ -5,7 +5,13 @@
 > `main` on GitHub is the source of truth. All BLOCKER/MAJOR gaps in [`GAP_REPORT.md`](./GAP_REPORT.md) are fixed
 > (order-ID GID normalization, real billing sync, escalation/refund/tenant fixes, + a production-shape contract suite).
 >
+> **Status — 2026-08-12: deployed to the Hostinger VPS and healthy, but running in mock/demo mode.**
+> Launch is gated on configuration, credentials, and App Store listing collateral — not on code.
+> See [`docs/LAUNCH_PLAN.md`](./docs/LAUNCH_PLAN.md) for the audited component status, the six
+> blockers, and the day-by-day execution plan.
+>
 > **Next steps:**
+> - **Launch** → [`docs/LAUNCH_PLAN.md`](./docs/LAUNCH_PLAN.md) — blockers, ordered tasks, human gates.
 > - **Deploy & live-test** → [`DEPLOYMENT_HANDOFF.md`](./DEPLOYMENT_HANDOFF.md) — VPS + Traefik + Shopify dev-store runbook.
 > - **Remaining backlog** → [`GAP_REPORT.md`](./GAP_REPORT.md) §B: in-app review-ask moment; recipient webhook-URL validation + per-recipient test send; ops polish (backoff jitter, write-back failures on `/healthz`).
 > - **Standing risk:** correctness is proven against mocks; replicate the production-shape contract-test pattern as real credentials are wired.
