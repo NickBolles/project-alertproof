@@ -65,5 +65,11 @@ Flat pricing, no per-staff fees — deliberately the anti-per-seat position, and
 - **Notification apps under-collect reviews** (they work silently in the background) — hence the engineered review-ask moment in §7.
 - **80% of merchants who install apps churn or go dormant within a couple months** [raw stat from pass 1] — the daily digest exists partly to stay visible and fight this.
 
+### Brand and domain direction (2026-07-24)
+**Recommendation: retain AlertProof.** It states the differentiated promise—alerts with delivery proof—more clearly than the alternatives. `alertproof.com` appeared unregistered in a live RDAP lookup on 2026-07-24; an unrelated GitHub project uses the name, so complete trademark/legal clearance before purchase or launch. Backup directions: Order Lark (`orderlark.com`) and Alert Keepr (`alertkeepr.com`) appeared unregistered in the same lookup.
+
+### Hosted deployment progress (2026-07-24)
+The VPS release is live at immutable SHA `c866c4720d5388d76be3650988ef9d442ac9259e`. Postgres and web are healthy; Traefik and public HTTPS `/healthz` are verified; the health response reports queue depth `0` and dead jobs `0`. The next product gate is a real Shopify development-store install: OAuth, signed webhook rejection and acceptance, a controlled order → alert → delivery-status callback flow, reconciliation, and test billing. Keep real email/SMS/provider credentials out of source control and use only root-owned server runtime configuration after the store test plan is ready.
+
 ---
 *Verify current Shopify API versioning, webhook topics, and app-review requirements against the dev docs at build time — this spec was written 2026-07-18.*
