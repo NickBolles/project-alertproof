@@ -1,8 +1,7 @@
 # AlertProof — Launch Plan
 
 **Written:** 2026-08-12 · **Target:** live on a real dev store + submitted to Shopify App Review within 2 days.
-**Production host (decided 2026-08-12):** `https://alertproof.nickbolles.com` → VPS `72.60.30.172`
-**Currently serving:** `https://alertproof.srv1073822.hstgr.cloud` (Hostinger VPS, Traefik + Let's Encrypt) — to be cut over, see B0
+**Production host:** `https://alertproof.nickbolles.com` → VPS `72.60.30.172` — ✅ **live with a valid Let's Encrypt cert as of 2026-08-12** (see B0)
 **Shopify dev app:** Client ID `926e44e19dcebedd5e9978ab4c99e3c7`, installed on `alertproof-lab` dev store
 **Repo HEAD audited:** `63679b4` (origin/main)
 
@@ -67,40 +66,62 @@ Treat "launch in 1–2 days" as **"live, proven, and submitted."** That is fully
 
 Legend: **[H]** = requires a human (browser login, account signup, payment, creative work). **[A]** = an agent can do it.
 
-### B0 — DNS cutover to `alertproof.nickbolles.com` **[H for Cloudflare, A for the rest]** · 30–45 min
+### B0 — DNS cutover to `alertproof.nickbolles.com` — ✅ **DONE 2026-08-12**
 
-`nickbolles.com` is already owned and hosted on Cloudflare (`rajeev.ns.cloudflare.com` /
-`bella.ns.cloudflare.com`). **No domain registration is needed.** But all three app subdomains
-currently point at the wrong machine:
+`nickbolles.com` was already owned and hosted on Cloudflare (`rajeev.ns.cloudflare.com` /
+`bella.ns.cloudflare.com`). **No domain registration was needed.**
 
-| Hostname | Resolves to | Should be |
-|---|---|---|
-| `alertproof.nickbolles.com` | `134.215.117.4` | `72.60.30.172` |
-| `skuforge.nickbolles.com` | `134.215.117.4` | `72.60.30.172` |
-| `checkoutwatch.nickbolles.com` | `134.215.117.4` | `72.60.30.172` |
+There was never an `alertproof` A record. A **wildcard `*.nickbolles.com` → `134.215.117.4`**
+(a residential dynamic broadband IP, `h134-215-117-4.mdtnwi.broadband.dynamic.tds.net`) was
+catching every unmatched subdomain, which is why `alertproof`, `skuforge`, and `checkoutwatch`
+all appeared to resolve. The fix was therefore **additive**, not an edit:
 
-`134.215.117.4` reverse-resolves to `h134-215-117-4.mdtnwi.broadband.dynamic.tds.net` — a
-residential dynamic broadband IP, almost certainly a stale record from an earlier setup.
+- **Added:** `alertproof` A → `72.60.30.172`, **DNS only (grey cloud)**, TTL Auto. A specific
+  record takes precedence over the wildcard for that one name.
+- **Unchanged:** the wildcard, `home` (proxied → `134.215.117.4`), `@` (→ `76.76.21.21`),
+  `vps` (proxied → `72.60.30.172`), and every other record. Zone went 29 → 30 records.
+- `skuforge.nickbolles.com` and `checkoutwatch.nickbolles.com` still fall through to the
+  wildcard. They need the same treatment when those apps are launched.
 
-> ⚠️ **The A records must be DNS-only (grey cloud), not proxied (orange cloud).** Traefik issues
-> certificates with the **TLS-ALPN-01** challenge
+> ⚠️ **The record must stay DNS-only (grey cloud), not proxied.** Traefik issues certificates
+> with the **TLS-ALPN-01** challenge
 > (`certificatesresolvers.mytlschallenge.acme.tlschallenge=true`). Cloudflare proxying terminates
-> TLS at its edge, so the challenge can never complete and Traefik will never get a certificate.
-> The apex `nickbolles.com` is proxied today; that is fine and unrelated.
+> TLS at its edge, so the challenge could never complete. This deviates from the zone's mostly
+> proxied convention **on purpose**. If proxying is ever required, Traefik must first be switched
+> to the DNS-01 challenge.
+>
+> Consequence, accepted knowingly: the VPS origin IP is publicly visible for this hostname.
+> Cloudflare's dashboard flags this as "origin IP partially exposed."
 
-Cutover order matters — **do this before B1**, because the Shopify App URL must be registered
-against the final hostname. Changing it after submission means re-doing OAuth config,
-re-registering webhooks, and possibly a re-review.
+Completed steps:
 
-1. **[H]** Fix the `alertproof` A record in Cloudflare → `72.60.30.172`, grey cloud.
-2. **[A]** Set `ALERTPROOF_HOST=alertproof.nickbolles.com` and
-   `SHOPIFY_APP_URL=https://alertproof.nickbolles.com` in `/etc/vps-apps/alertproof.env`.
-3. **[A]** Redeploy so the Traefik router rule picks up the new host.
-4. **[A]** Watch Traefik logs until the certificate is issued, then verify
-   `curl --fail https://alertproof.nickbolles.com/healthz`.
+1. ✅ Added the Cloudflare record; verified against both the authoritative Cloudflare
+   nameservers and `8.8.8.8`.
+2. ✅ Set `ALERTPROOF_HOST` and `SHOPIFY_APP_URL` in `/etc/vps-apps/alertproof.env`
+   (timestamped backup taken first).
+3. ✅ Redeployed; Traefik router rule is now ``Host(`alertproof.nickbolles.com`)``.
+4. ✅ Let's Encrypt certificate issued (`CN=alertproof.nickbolles.com`, issuer `YR2`,
+   valid to 2026-11-10). `https://alertproof.nickbolles.com/healthz` returns
+   `{"ok":true,"database":{"ok":true},...}`.
+5. ✅ Security posture re-probed on the new host: invalid-HMAC webhook → 401, `/dev/mock` → 404,
+   `/app` unauthenticated → 410, HTTP → HTTPS 301.
 
-Keeping the old `srv1073822.hstgr.cloud` router alongside the new one during cutover is harmless
-and gives a rollback path; drop it once the new cert is confirmed.
+`https://alertproof.srv1073822.hstgr.cloud` now returns 404 — Traefik no longer has a router for
+it. That is expected; nothing depended on it.
+
+> ⚠️ **`/etc/vps-apps/alertproof.env` contains every key twice.** Lines 1–42 are a copy of
+> `.env.production.example`; lines 44–61 are an appended override block. Docker Compose takes the
+> **last** occurrence, so the override block is what is live. Only the effective lines (47, 58)
+> were edited. **Rewrite this file as a single clean block during the B2 credential swap** — as it
+> stands, editing the "obvious" first occurrence of any key silently does nothing.
+
+> ⚠️ **Deploy with an explicit project name:**
+> `docker compose -p alertproof --env-file .env.production -f docker-compose.production.yml up -d`.
+> Without `-p alertproof`, Compose derives the project from the directory name
+> (`project-alertproof`) and stands up a **parallel stack with an empty database** instead of
+> updating the running one. This happened once during the cutover and was rolled back; the
+> original `alertproof_alertproof-postgres` volume was never touched. An orphaned empty volume
+> `project-alertproof_alertproof-postgres` remains and can be removed at leisure.
 
 ### B1 — `shopify.app.toml` is still the dev placeholder **[H then A]** · 30–45 min
 
@@ -225,8 +246,8 @@ Three lanes run in parallel. Lane A is the critical path; Lane C is the long pol
 | 1 | **Back up `ALERTPROOF_ENCRYPTION_KEY`** off-host to a password manager | A | H | 5 min | — |
 | 2 | Start Postmark signup + **domain verification DNS records** (slowest external dependency — kick off first) | B | H | 30 min + propagation | — |
 | 3 | Start icon + screenshots-plan + privacy policy draft | C | H | 3–5 h | — |
-| 3b | **Cloudflare: point `alertproof` A record at `72.60.30.172`, grey cloud (DNS-only)** | A | H | 10 min | — |
-| 3c | Set `ALERTPROOF_HOST` + `SHOPIFY_APP_URL` to the new host; redeploy; confirm Traefik issues the cert and `https://alertproof.nickbolles.com/healthz` returns 200 | A | A | 30 min | 3b |
+| ~~3b~~ | ~~Cloudflare: add `alertproof` A record → `72.60.30.172`, grey cloud~~ | A | — | ✅ done | — |
+| ~~3c~~ | ~~Set `ALERTPROOF_HOST` + `SHOPIFY_APP_URL`; redeploy; confirm cert + `/healthz`~~ | A | — | ✅ done | — |
 | 4 | `shopify app config link` → select app `926e44e…`; confirm the toml's `application_url`/`redirect_urls` match the new host | A | H (browser login), then A | 30 min | 3c |
 | 5 | Copy real Client ID/secret into `/etc/vps-apps/alertproof.env`; flip `AUTH_MODE=shopify`, `ALERTPROOF_AUTH_BYPASS=0`, `ALERTPROOF_FORCE_MOCKS=0`; **fix `SCOPES`** | A | H (secret) + A | 20 min | 4 |
 | 6 | `git fetch && git checkout 63679b4` on VPS; `docker compose --env-file .env.production -f docker-compose.production.yml up -d --build` | A | A | 15 min | 5 |
@@ -276,8 +297,8 @@ Everything on it except tasks 3b, 4, 9, 20 and 22 is agent-executable.
 
 ## 4. Human gates (cannot be automated)
 
-0. **Cloudflare login** to fix the `alertproof` A record (task 3b). No domain registration is
-   needed — `nickbolles.com` is already owned. Must be grey-cloud/DNS-only, see B0.
+0. ~~**Cloudflare login**~~ — ✅ done 2026-08-12, record added. Still needed later for Postmark's
+   DKIM + Return-Path records (B3), and for `skuforge`/`checkoutwatch` when those launch.
 1. **Shopify Partner browser login** for `shopify app config link` (task 4) and approving OAuth on
    the dev store (task 9).
 2. **Real Client Secret** — must be pasted into the VPS env by a human; never into chat or git.
