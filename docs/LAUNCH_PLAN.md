@@ -1,7 +1,8 @@
 # AlertProof — Launch Plan
 
 **Written:** 2026-08-12 · **Target:** live on a real dev store + submitted to Shopify App Review within 2 days.
-**Live host:** `https://alertproof.srv1073822.hstgr.cloud` (Hostinger VPS, Traefik + Let's Encrypt)
+**Production host (decided 2026-08-12):** `https://alertproof.nickbolles.com` → VPS `72.60.30.172`
+**Currently serving:** `https://alertproof.srv1073822.hstgr.cloud` (Hostinger VPS, Traefik + Let's Encrypt) — to be cut over, see B0
 **Shopify dev app:** Client ID `926e44e19dcebedd5e9978ab4c99e3c7`, installed on `alertproof-lab` dev store
 **Repo HEAD audited:** `63679b4` (origin/main)
 
@@ -66,6 +67,41 @@ Treat "launch in 1–2 days" as **"live, proven, and submitted."** That is fully
 
 Legend: **[H]** = requires a human (browser login, account signup, payment, creative work). **[A]** = an agent can do it.
 
+### B0 — DNS cutover to `alertproof.nickbolles.com` **[H for Cloudflare, A for the rest]** · 30–45 min
+
+`nickbolles.com` is already owned and hosted on Cloudflare (`rajeev.ns.cloudflare.com` /
+`bella.ns.cloudflare.com`). **No domain registration is needed.** But all three app subdomains
+currently point at the wrong machine:
+
+| Hostname | Resolves to | Should be |
+|---|---|---|
+| `alertproof.nickbolles.com` | `134.215.117.4` | `72.60.30.172` |
+| `skuforge.nickbolles.com` | `134.215.117.4` | `72.60.30.172` |
+| `checkoutwatch.nickbolles.com` | `134.215.117.4` | `72.60.30.172` |
+
+`134.215.117.4` reverse-resolves to `h134-215-117-4.mdtnwi.broadband.dynamic.tds.net` — a
+residential dynamic broadband IP, almost certainly a stale record from an earlier setup.
+
+> ⚠️ **The A records must be DNS-only (grey cloud), not proxied (orange cloud).** Traefik issues
+> certificates with the **TLS-ALPN-01** challenge
+> (`certificatesresolvers.mytlschallenge.acme.tlschallenge=true`). Cloudflare proxying terminates
+> TLS at its edge, so the challenge can never complete and Traefik will never get a certificate.
+> The apex `nickbolles.com` is proxied today; that is fine and unrelated.
+
+Cutover order matters — **do this before B1**, because the Shopify App URL must be registered
+against the final hostname. Changing it after submission means re-doing OAuth config,
+re-registering webhooks, and possibly a re-review.
+
+1. **[H]** Fix the `alertproof` A record in Cloudflare → `72.60.30.172`, grey cloud.
+2. **[A]** Set `ALERTPROOF_HOST=alertproof.nickbolles.com` and
+   `SHOPIFY_APP_URL=https://alertproof.nickbolles.com` in `/etc/vps-apps/alertproof.env`.
+3. **[A]** Redeploy so the Traefik router rule picks up the new host.
+4. **[A]** Watch Traefik logs until the certificate is issued, then verify
+   `curl --fail https://alertproof.nickbolles.com/healthz`.
+
+Keeping the old `srv1073822.hstgr.cloud` router alongside the new one during cutover is harmless
+and gives a rollback path; drop it once the new cert is confirmed.
+
 ### B1 — `shopify.app.toml` is still the dev placeholder **[H then A]** · 30–45 min
 
 `shopify.app.toml` currently reads:
@@ -75,6 +111,10 @@ client_id = "dev-key"
 application_url = "http://localhost:3000"
 redirect_urls = ["http://localhost:3000/auth/callback"]
 ```
+
+**Partially resolved 2026-08-12:** `client_id`, `application_url`, and `redirect_urls` are now set
+to the real app and `https://alertproof.nickbolles.com`, and
+`automatically_update_urls_on_dev` is `false`. What remains is the CLI link + deploy below.
 
 It must point at the real app (`926e44e19dcebedd5e9978ab4c99e3c7`) and the live HTTPS origin.
 Until `shopify app deploy` runs against the real app, **no webhook subscriptions are registered
@@ -185,7 +225,9 @@ Three lanes run in parallel. Lane A is the critical path; Lane C is the long pol
 | 1 | **Back up `ALERTPROOF_ENCRYPTION_KEY`** off-host to a password manager | A | H | 5 min | — |
 | 2 | Start Postmark signup + **domain verification DNS records** (slowest external dependency — kick off first) | B | H | 30 min + propagation | — |
 | 3 | Start icon + screenshots-plan + privacy policy draft | C | H | 3–5 h | — |
-| 4 | `shopify app config link` → select app `926e44e…`; set `application_url` + `redirect_urls` to the live host; set `automatically_update_urls_on_dev = false` | A | H (browser login), then A | 30 min | — |
+| 3b | **Cloudflare: point `alertproof` A record at `72.60.30.172`, grey cloud (DNS-only)** | A | H | 10 min | — |
+| 3c | Set `ALERTPROOF_HOST` + `SHOPIFY_APP_URL` to the new host; redeploy; confirm Traefik issues the cert and `https://alertproof.nickbolles.com/healthz` returns 200 | A | A | 30 min | 3b |
+| 4 | `shopify app config link` → select app `926e44e…`; confirm the toml's `application_url`/`redirect_urls` match the new host | A | H (browser login), then A | 30 min | 3c |
 | 5 | Copy real Client ID/secret into `/etc/vps-apps/alertproof.env`; flip `AUTH_MODE=shopify`, `ALERTPROOF_AUTH_BYPASS=0`, `ALERTPROOF_FORCE_MOCKS=0`; **fix `SCOPES`** | A | H (secret) + A | 20 min | 4 |
 | 6 | `git fetch && git checkout 63679b4` on VPS; `docker compose --env-file .env.production -f docker-compose.production.yml up -d --build` | A | A | 15 min | 5 |
 | 7 | Verify `/healthz` 200, DB ok, DEAD 0; invalid-HMAC probe still 401 | A | A | 10 min | 6 |
@@ -226,14 +268,16 @@ against a disposable Postgres, `ALERTPROOF_PERF_TEST=1 npm run perf:sanity`, and
 
 ### Critical path
 
-`4 (link app) → 5 (env) → 6 (redeploy) → 8 (webhook deploy) → 9 (OAuth install) → 13 (order drill) → 20 (screenshots) → 22 (submit)`
+`3b (DNS) → 3c (host cutover) → 4 (link app) → 5 (env) → 6 (redeploy) → 8 (webhook deploy) → 9 (OAuth install) → 13 (order drill) → 20 (screenshots) → 22 (submit)`
 
-Everything on it except tasks 4, 9, 20 and 22 is agent-executable.
+Everything on it except tasks 3b, 4, 9, 20 and 22 is agent-executable.
 
 ---
 
 ## 4. Human gates (cannot be automated)
 
+0. **Cloudflare login** to fix the `alertproof` A record (task 3b). No domain registration is
+   needed — `nickbolles.com` is already owned. Must be grey-cloud/DNS-only, see B0.
 1. **Shopify Partner browser login** for `shopify app config link` (task 4) and approving OAuth on
    the dev store (task 9).
 2. **Real Client Secret** — must be pasted into the VPS env by a human; never into chat or git.
@@ -249,10 +293,9 @@ Everything on it except tasks 4, 9, 20 and 22 is agent-executable.
 These are documentation/config drift, not functional problems, but they will confuse the next
 person (or agent) touching this:
 
-- **Hostname drift.** `docs/GOING_LIVE.md`, `.env.production.example`, and `DEPLOYMENT_HANDOFF.md`
-  all say `alertproof.nickbolles.com`. The live host is `alertproof.srv1073822.hstgr.cloud`.
-  Pick one and update the docs. (If `nickbolles.com` is the intended production domain, that DNS
-  change must happen **before** the app URL is registered with Shopify, or OAuth breaks.)
+- ~~**Hostname drift.**~~ **Resolved 2026-08-12:** `alertproof.nickbolles.com` is the decided
+  production host, which is what `docs/GOING_LIVE.md`, `.env.production.example`, and
+  `DEPLOYMENT_HANDOFF.md` already say. The remaining work is the DNS + env cutover in **B0**.
 - **`fly.toml` is dead weight and misleading.** It has `auto_stop_machines = "stop"`, which
   directly contradicts the "must stay awake or drop webhooks" requirement. Deployment is on the
   VPS. Either delete `fly.toml` or set `auto_stop_machines = "off"` and mark it unused.

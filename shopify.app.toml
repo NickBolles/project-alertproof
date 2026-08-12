@@ -1,10 +1,12 @@
-client_id = "dev-key"
+client_id = "926e44e19dcebedd5e9978ab4c99e3c7"
 name = "AlertProof"
-application_url = "http://localhost:3000"
+application_url = "https://alertproof.nickbolles.com"
 embedded = true
 
 [build]
-automatically_update_urls_on_dev = true
+# Must stay false: `shopify app dev` would otherwise rewrite application_url to a
+# temporary tunnel and break the registered production OAuth/webhook endpoints.
+automatically_update_urls_on_dev = false
 include_config_on_deploy = true
 
 [webhooks]
@@ -22,4 +24,4 @@ uri = "/webhooks/shopify"
 scopes = "read_orders,write_orders,read_products,read_inventory"
 
 [auth]
-redirect_urls = ["http://localhost:3000/auth/callback"]
+redirect_urls = ["https://alertproof.nickbolles.com/auth/callback"]
