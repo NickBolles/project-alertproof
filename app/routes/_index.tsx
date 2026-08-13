@@ -24,7 +24,6 @@ export function loader() {
       maxRules: plan.maxRules,
       retentionDays: plan.retentionDays,
       ordersPerMonth: plan.ordersPerMonth,
-      escalation: plan.escalation,
     })),
   };
 }
