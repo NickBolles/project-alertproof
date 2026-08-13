@@ -30,6 +30,11 @@ export const envSchema = z
     POSTMARK_API_TOKEN: optionalString,
     POSTMARK_WEBHOOK_SECRET: optionalString,
     EMAIL_FROM: z.string().email().default("alerts@alertproof.test"),
+    /** Shown on the public support/privacy pages and in the App Store listing. */
+    SUPPORT_EMAIL: z
+      .string()
+      .email()
+      .default("support@alertproof.nickbolles.com"),
     TWILIO_ACCOUNT_SID: optionalString,
     TWILIO_AUTH_TOKEN: optionalString,
     TWILIO_FROM_NUMBER: optionalString,

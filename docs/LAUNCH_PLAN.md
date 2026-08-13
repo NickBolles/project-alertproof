@@ -49,14 +49,14 @@ Treat "launch in 1–2 days" as **"live, proven, and submitted."** That is fully
 | **Admin API version** | ✅ Valid | `2026-07` is the latest stable `ApiVersion` in the installed SDK (`July26`). |
 | **Billing plan sync** | ✅ Implemented | `app_subscriptions/update` topic handler + `currentAppInstallation.activeSubscriptions` reconcile. |
 | **GDPR webhooks** | ✅ Implemented | All three mandatory topics handled substantively. |
-| **`shopify.app.toml`** | ❌ **BLOCKER** | Still the dev placeholder — see B1. |
-| **VPS environment config** | ❌ **BLOCKER** | Running in **mock/demo mode** with placeholder credentials — see B2. |
+| **`shopify.app.toml`** | ⚠️ Ready, not deployed | Values all correct (verified 2026-08-13: client id, host, 7+3 webhook topics match `SHOPIFY_TOPICS`, scopes). Awaiting `shopify app config link` + `deploy` — see B1. |
+| **VPS environment config** | ⚠️ Partly fixed | Collapsed to a single clean block 2026-08-13; `SCOPES`, `SHOPIFY_API_KEY`, `ALERTPROOF_AUTH_BYPASS` corrected. Still in mock mode pending the real client secret — see B2. |
 | **Postmark** | ❌ **BLOCKER** | No real account/verified sender — see B3. |
 | **Shopify managed App Pricing** | ❌ **BLOCKER** | Not configured; `SHOPIFY_APP_PRICING_URL` empty — see B4. |
-| **Deployed revision** | ⚠️ Stale | VPS is at `c866c47`; `main` is `63679b4` (2 commits ahead) — see B5. |
-| **App Store listing assets** | ❌ **BLOCKER** | No icon, screenshots, privacy policy, or support contact — see B6. |
-| **Marketing/landing page** | ⚠️ Stub | `/` still renders "The Phase 0 application shell is ready." |
-| **DB backups** | ❌ Missing | No backup/restore for the `alertproof-postgres` volume. Required before real merchant data. |
+| **Deployed revision** | ⚠️ Stale | VPS working tree checked out to `c2caaf0` on 2026-08-13, but **the container still runs the image built from `c866c47`** — the rebuild was not run. See B5. |
+| **App Store listing assets** | ⚠️ Partly done | Privacy policy, terms, and support pages now ship at `/privacy`, `/terms`, `/support` (2026-08-13). Icon + screenshots + listing copy still missing — see B6. |
+| **Marketing/landing page** | ✅ Done | `/` is a real landing page (2026-08-13) with plan table sourced from `PLAN_FEATURES` and links to privacy/terms/support. |
+| **DB backups** | ✅ Done | Encrypted nightly `pg_dump` + tested restore as of 2026-08-13 — see §5b. On-host only; off-host copy still pending. |
 | **Cron recovery path** | ⚠️ Not scheduled | In-process worker is primary (`DISABLE_WORKER=0`, container is always-on). The `/internal/cron/*` recovery path exists but nothing schedules it. |
 | **Deploy automation** | ⚠️ Manual | No CD workflow; deploys are manual `git fetch` + `docker compose up -d --build` on the VPS. |
 
@@ -204,9 +204,21 @@ recurring charges — the code deliberately creates none). Copy the resulting pr
 Until this is set, `ShopifyBillingService.requestSubscription` throws `NotConfiguredError` and the
 in-app upgrade button is dead.
 
-### B5 — VPS is 2 commits behind `main` **[A]** · 15 min
+### B5 — VPS is running a stale image **[A]** · 15 min
 
-VPS is at `c866c47`; `main` is `63679b4`. The VPS is missing:
+**Status 2026-08-13:** the VPS working tree is now checked out at `c2caaf0`, but the rebuild was
+**not** run, so the container still serves the image built from `c866c47`. The one remaining step is:
+
+```bash
+cd /opt/vps-apps/project-alertproof && \
+  docker compose -p alertproof --env-file .env.production \
+  -f docker-compose.production.yml up -d --build
+```
+
+This is also what applies the corrected `SCOPES` and `SHOPIFY_API_KEY` — the running container
+still holds the old values in its environment.
+
+Originally: VPS at `c866c47`; `main` at `63679b4`. The VPS is missing:
 
 - `acc1742` — **fix: keep billing navigation embedded** (a real user-facing bug: billing nav
   breaking out of the embedded admin frame). App reviewers will hit this.
@@ -309,6 +321,41 @@ Everything on it except tasks 3b, 4, 9, 20 and 22 is agent-executable.
 
 ---
 
+## 4b. Progress log — 2026-08-13 (agent pass)
+
+Done in this pass, without human intervention:
+
+- **`shopify.app.toml` verified end to end.** `client_id`, `application_url`, `redirect_urls`,
+  `automatically_update_urls_on_dev = false`, scopes, and both webhook subscription blocks are
+  correct. The 7 regular + 3 compliance topics match `SHOPIFY_TOPICS` in
+  `app/lib/ingest/topics.ts` exactly. **No file change was needed.**
+  - ⚠️ The host is `alertproof.nickbolles.com`, *not* `alertproof.srv1073822.hstgr.cloud`. The
+    hstgr hostname has had no Traefik router since the B0 cutover and returns 404; only the
+    nickbolles.com host is routed and holds a valid certificate. Re-probed 2026-08-13.
+- **Public pages shipped** (`/`, `/privacy`, `/terms`, `/support`) — closes launch task 19 and the
+  privacy-policy/support-contact halves of B6. Contact address is the new `SUPPORT_EMAIL` env var
+  (default `support@alertproof.nickbolles.com`); a mailbox must actually exist there before
+  submission. Legal copy is drafted from the real schema and retention code but has **not** had
+  legal review.
+- **§5 drift cleaned:** `fly.toml` marked unused with `auto_stop_machines = "off"`; the phantom
+  `extensions/*` workspaces entry removed from `package.json`; `DEPLOYMENT_HANDOFF.md` now warns
+  that a local `npm test` skips 45 integration tests.
+- **VPS env collapsed to a single clean block** (`/etc/vps-apps/alertproof.env`, backup taken).
+  The double-block trap described in B0 is gone. `SCOPES` corrected to all four scopes,
+  `SHOPIFY_API_KEY` set to the real client id, `ALERTPROOF_AUTH_BYPASS` set to `0`.
+- **`go-live.sh` added on the VPS** — takes the client secret, flips `AUTH_MODE=shopify` and
+  `ALERTPROOF_FORCE_MOCKS=0`, redeploys, and verifies. One command once B2's secret exists.
+- **Encrypted nightly Postgres backups** with a tested restore (see §5b).
+
+Deliberately *not* done, and why:
+
+- **`AUTH_MODE` and `ALERTPROOF_FORCE_MOCKS` left at `mock`/`1`.** Flipping them without the real
+  `SHOPIFY_API_SECRET` would take the app from a working demo to one that fails every Shopify API
+  call, with no compensating benefit — the secret is a hard human gate either way.
+- **`shopify app config link` / `deploy` not run.** Requires an interactive Partner browser login;
+  there is still no `.shopify/` directory. Until it runs, **no webhook subscriptions exist on
+  Shopify's side**, which remains the single largest blocker.
+
 ## 5. Known inconsistencies to clean up
 
 These are documentation/config drift, not functional problems, but they will confuse the next
@@ -317,16 +364,37 @@ person (or agent) touching this:
 - ~~**Hostname drift.**~~ **Resolved 2026-08-12:** `alertproof.nickbolles.com` is the decided
   production host, which is what `docs/GOING_LIVE.md`, `.env.production.example`, and
   `DEPLOYMENT_HANDOFF.md` already say. The remaining work is the DNS + env cutover in **B0**.
-- **`fly.toml` is dead weight and misleading.** It has `auto_stop_machines = "stop"`, which
-  directly contradicts the "must stay awake or drop webhooks" requirement. Deployment is on the
-  VPS. Either delete `fly.toml` or set `auto_stop_machines = "off"` and mark it unused.
-- **`DEPLOYMENT_HANDOFF.md` claims "108 tests pass"** — accurate in CI, but a local `npm test`
-  skips 45 integration tests unless `TEST_DATABASE_URL` is set. Worth a note so a local green run
-  is not mistaken for full coverage.
-- **`package.json` declares `workspaces: ["extensions/*"]`** but no `extensions/` directory exists.
-  Harmless; remove for tidiness.
-- **VPS repo is on a detached HEAD** with no deploy script. Consider a two-line deploy script or a
-  CD workflow so redeploys are reproducible.
+- ~~**`fly.toml` is dead weight and misleading.**~~ ✅ Fixed 2026-08-13: marked unused in a header
+  comment and `auto_stop_machines` set to `"off"`.
+- ~~**`DEPLOYMENT_HANDOFF.md` claims "108 tests pass"**~~ ✅ Fixed 2026-08-13: §9 now carries an
+  explicit warning that a local `npm test` reports 63–64 passed / 45 skipped and still exits 0.
+- ~~**`package.json` declares `workspaces: ["extensions/*"]`**~~ ✅ Fixed 2026-08-13: removed.
+- **VPS repo is still on a detached HEAD**, now at `c2caaf0`. `/usr/local/bin/alertproof-go-live.sh`
+  (versioned at `scripts/vps/alertproof-go-live.sh`) covers the credential flip and redeploy, but
+  there is still no plain redeploy script or CD workflow.
+
+## 5b. Backups — ✅ done 2026-08-13
+
+Encrypted nightly logical backups are live, and a restore has been tested end to end.
+
+- `/usr/local/bin/alertproof-backup.sh` (versioned at `scripts/vps/alertproof-backup.sh`):
+  `pg_dump` → gzip → `openssl enc -aes-256-cbc -pbkdf2 -iter 200000`, written to
+  `/var/backups/alertproof/`, 14 daily copies retained. `set -euo pipefail` plus a
+  `.partial` → final rename means a failed dump can never be promoted to a real backup name.
+- Scheduled by `/etc/cron.d/alertproof-backup` at 03:17 UTC daily; output goes to syslog
+  (`journalctl -t alertproof-backup`).
+- **Restore tested 2026-08-13:** the encrypted backup was decrypted and restored into a scratch
+  database, producing all 14 tables and 3 `_prisma_migrations` rows, then the scratch database was
+  dropped. The restore command is documented in the script header.
+
+> ⚠️ **Two keys must be backed up off-host, or the data is unrecoverable:**
+> `/etc/vps-apps/alertproof-backup.key` (without it every backup file is unreadable) and
+> `ALERTPROOF_ENCRYPTION_KEY` from `/etc/vps-apps/alertproof.env` (without it every stored Slack,
+> Discord, and Twilio secret is unreadable). Both are currently on the VPS **only**.
+
+> ⚠️ Backups are **on-host only**. A VPS loss loses both the database and its backups. Moving them
+> off-host needs storage credentials, which is a human gate — add `rclone`/S3 and a second cron
+> line once a bucket exists.
 
 ---
 
