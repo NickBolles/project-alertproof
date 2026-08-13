@@ -226,6 +226,44 @@ Originally: VPS at `c866c47`; `main` at `63679b4`. The VPS is missing:
 
 Redeploy is required regardless, since B2's env changes need a container restart.
 
+### B7 — Protected customer data access not approved **[H]** · 20–30 min — ⛔ **NEW, blocks everything**
+
+Discovered 2026-08-13 by actually running `shopify app deploy`. It failed:
+
+```
+Version couldn't be created.
+  • This app is not approved to subscribe to webhook topics containing
+    protected customer data.   (×4)
+```
+
+All four order topics — `orders/create`, `orders/paid`, `order_transactions/create`,
+`refunds/create` — carry protected customer data, so Shopify refuses to create the app version
+at all. **Nothing partial gets registered: the deploy is all-or-nothing, so there are still zero
+webhook subscriptions on Shopify's side.**
+
+This is not a code or config problem and cannot be worked around by trimming the topic list —
+those four topics *are* the product. It is a one-time approval request in the Partner Dashboard:
+
+> **Apps → AlertProof → API access → Protected customer data access → Request access**
+
+Level 1 (protected customer data) is required. Level 2 (name, email, phone, address) is **not** —
+the app never reads customer PII fields, only order-level data. Requesting only Level 1 keeps the
+review surface smaller.
+
+The form asks how data is used, retained, encrypted, and who can access it. The answers are all
+already documented on the new `/privacy` page — reuse them:
+
+| Form question | Answer, per the code |
+|---|---|
+| Purpose | Send staff alerts on order events; record delivery outcome |
+| Data retained | Order id/name/value + financial status; **no customer PII** |
+| Retention period | Per plan: 7d Free / 90d Standard / unlimited Pro; raw payloads purged at 30d |
+| Encryption at rest | AES-256-GCM for merchant-supplied secrets; TLS in transit |
+| Staff access | Restricted; data partitioned per shop |
+
+For a dev app this is typically approved immediately on submission. **This is now the top of the
+critical path** — tasks 8, 9, and 13 are all blocked behind it.
+
 ### B6 — App Store listing collateral does not exist **[H]** · 3–5 hours
 
 Nothing in the repo supports a listing. Shopify requires all of these before submission:
@@ -301,9 +339,13 @@ against a disposable Postgres, `ALERTPROOF_PERF_TEST=1 npm run perf:sanity`, and
 
 ### Critical path
 
-`3b (DNS) → 3c (host cutover) → 4 (link app) → 5 (env) → 6 (redeploy) → 8 (webhook deploy) → 9 (OAuth install) → 13 (order drill) → 20 (screenshots) → 22 (submit)`
+**Revised 2026-08-13.** Tasks 3b, 3c, 4, 5 and 6 are done. The path is now:
 
-Everything on it except tasks 3b, 4, 9, 20 and 22 is agent-executable.
+`B7 (protected customer data approval) → 8 (webhook deploy) → 9 (OAuth install) → 13 (order drill) → 20 (screenshots) → 22 (submit)`
+
+B7 is a new, hard blocker discovered by running the deploy for real. Everything downstream of it
+is blocked, and it is a Partner Dashboard approval only the app owner can request. Of the rest,
+only tasks 9, 20 and 22 need a human.
 
 ---
 
@@ -352,9 +394,17 @@ Deliberately *not* done, and why:
 - **`AUTH_MODE` and `ALERTPROOF_FORCE_MOCKS` left at `mock`/`1`.** Flipping them without the real
   `SHOPIFY_API_SECRET` would take the app from a working demo to one that fails every Shopify API
   call, with no compensating benefit — the secret is a hard human gate either way.
-- **`shopify app config link` / `deploy` not run.** Requires an interactive Partner browser login;
-  there is still no `.shopify/` directory. Until it runs, **no webhook subscriptions exist on
-  Shopify's side**, which remains the single largest blocker.
+- ~~**`shopify app config link` / `deploy` not run.**~~ Both were run on 2026-08-13:
+  - `config link` **succeeded** — the CLI already held a valid Partner session, so no browser
+    login was needed after all. It revealed that the **Partner Dashboard app was still configured
+    with `https://alertproof.srv1073822.hstgr.cloud`**, and overwrote the local toml with it. The
+    local toml was restored to `alertproof.nickbolles.com`; since config is included on deploy, a
+    successful deploy will correct the Dashboard at the source. **Until then the Dashboard still
+    points at a host that 404s, so a real OAuth install would fail regardless of credentials.**
+  - `deploy` **failed** on protected-customer-data approval — see the new **B7**, which is now the
+    top of the critical path.
+  - The CLI also removed `include_config_on_deploy` from the toml: the field is no longer
+    supported because config is now *always* included on deploy. Behaviour is unchanged.
 
 ## 5. Known inconsistencies to clean up
 
