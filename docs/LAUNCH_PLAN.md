@@ -450,6 +450,19 @@ Encrypted nightly logical backups are live, and a restore has been tested end to
 
 ## 6. Post-submission backlog
 
+> ⛔ **New MAJOR, found 2026-08-13 during PR #5 review — fix before enabling SMS for any
+> merchant.** With `ALERTPROOF_FORCE_MOCKS=0` and no app-level Twilio, `smsForShop`
+> (`app/lib/adapters/index.server.ts:145`) falls through to `realSms ?? mockSms` → **`mockSms`**.
+> A Pro shop with no BYO credentials therefore gets its SMS written to `MockOutbox` and the
+> delivery recorded as `SENT`. The merchant sees a sent SMS in the delivery log; nothing left the
+> server. That is precisely the silent failure the delivery log exists to prevent, and it is
+> reachable in production today.
+>
+> Fix: when neither app-level nor merchant Twilio credentials exist, record the delivery as
+> `SKIPPED` (or refuse to create it) instead of routing to the mock adapter. Reserve `mockSms` for
+> `ALERTPROOF_FORCE_MOCKS=1` and `mock://` destinations. `/support` currently carries an explicit
+> warning about this; remove it once fixed. `alertproof-go-live.sh` warns at deploy time.
+
 Not launch blockers. Ordered by value-for-effort, carried forward from `GAP_REPORT.md` §B:
 
 1. **In-app review-ask moment** (S) — reviews are App Store ranking currency; trigger after N

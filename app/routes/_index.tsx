@@ -9,7 +9,7 @@ export function meta() {
     {
       name: "description",
       content:
-        "Multi-channel staff alerts for Shopify orders, with a delivery log that proves every alert was actually delivered — plus reconciliation that catches missed webhooks.",
+        "Multi-channel staff alerts for Shopify orders, with a delivery log built from what each provider reported back — plus reconciliation that replays order webhooks Shopify dropped.",
     },
   ];
 }
@@ -34,14 +34,16 @@ export default function Index() {
   return (
     <PublicPage
       title="Order alerts your staff actually receive."
-      intro="AlertProof sends multi-channel alerts on the Shopify order events you care about — and keeps a delivery log that proves each one arrived. When a webhook goes missing, reconciliation catches it."
+      intro="AlertProof sends multi-channel alerts on the Shopify order events you care about — and keeps a delivery log that records what each provider did with every message. When Shopify drops an order webhook, reconciliation replays it."
     >
       <Section heading="Why it exists">
         <p>
-          Most alert apps tell you a message was <em>sent</em>. That is not the
-          same as delivered. AlertProof records the provider&apos;s own delivery
-          and bounce callbacks against every message, so &ldquo;we never got the
-          alert&rdquo; is answerable with evidence instead of a guess.
+          Most alert apps tell you a message was <em>sent</em> and stop there.
+          AlertProof records what the delivery provider actually reported back —
+          Postmark&apos;s delivery and bounce callbacks for email, the
+          accept-or-reject response for Slack and Discord — against every
+          message. So &ldquo;we never got the alert&rdquo; is answerable with
+          evidence instead of a guess.
         </p>
       </Section>
 
@@ -57,13 +59,19 @@ export default function Index() {
           </li>
           <li>
             <strong>Proof of delivery.</strong> A per-message log of sent,
-            delivered, bounced, and failed states sourced from provider
-            callbacks — not from optimistic local state.
+            delivered, bounced, and failed states. For email, the states come
+            from Postmark&apos;s delivery and bounce callbacks, so{" "}
+            <em>delivered</em> means the receiving mail server accepted it. For
+            Slack and Discord, which send no callbacks, <em>delivered</em> means
+            the incoming webhook returned success — acceptance, not receipt.
           </li>
           <li>
             <strong>Reconciliation.</strong> Orders are re-checked against the
-            Shopify Admin API, so a webhook Shopify never delivered still
-            produces exactly one alert — never a duplicate.
+            Shopify Admin API, so an <code>orders/create</code>,{" "}
+            <code>orders/paid</code>, or <code>refunds/create</code> webhook
+            that Shopify never delivered still produces exactly one alert —
+            never a duplicate. Inventory and transaction events are not
+            replayable this way and depend on the webhook arriving.
           </li>
           <li>
             <strong>Escalation.</strong> On Pro, a bounced or failed alert

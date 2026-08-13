@@ -44,9 +44,12 @@ export default function Support() {
             the recipient marked an earlier alert as spam.
           </li>
           <li>
-            If the status is <strong>delivered</strong>, the provider accepted
-            and delivered it; check the recipient&apos;s spam folder and any
-            inbox rules.
+            If the status is <strong>delivered</strong> on an email, the
+            receiving mail server accepted it — check the recipient&apos;s spam
+            folder and any inbox rules. On Slack or Discord,{" "}
+            <strong>delivered</strong> means the incoming webhook accepted the
+            post, so if nobody saw it, check that the webhook URL still points
+            at the channel you expect.
           </li>
           <li>
             If there is no entry for the order at all, the rule may not have
@@ -67,19 +70,42 @@ export default function Support() {
           deduplication key makes a recovered event and a late-arriving webhook
           collapse to a single alert rather than two.
         </p>
+        <p>
+          This covers order created, order paid, and refund created, because
+          those can be reconstructed by reading the order back. Low-inventory
+          and payment-failure rules fire from{" "}
+          <code>inventory_levels/update</code> and{" "}
+          <code>order_transactions/create</code>, which describe a moment in
+          time rather than a durable state, so they cannot be replayed after the
+          fact. If Shopify drops one of those, no alert is produced.
+        </p>
 
         <h3 style={styles.h3}>Does an alert ever get sent twice?</h3>
         <p>
-          No. Alerts are deduplicated per store on a key derived from the event
-          and rule, and each individual message is unique on recipient, channel,
-          and destination.
+          Almost never, but the guarantee is at-least-once, not exactly-once.
+          Alerts are deduplicated per store on a key derived from the event and
+          rule, and each message is unique on recipient, channel, and
+          destination, so a replayed webhook or a reconciliation pass will not
+          produce a second alert. The one gap is a crash in the moment between
+          the provider accepting a message and that outcome being recorded: the
+          message is retried, and you may see a duplicate. We prefer that to the
+          alternative, which is dropping the alert entirely.
         </p>
 
         <h3 style={styles.h3}>How do I send SMS?</h3>
         <p>
           SMS is a Pro feature and uses your own Twilio account. Add your Twilio
-          credentials in Settings; they are encrypted at rest. Without
-          credentials, SMS recipients are skipped rather than silently failing.
+          credentials in Settings; they are encrypted at rest.
+        </p>
+        <p>
+          <strong>
+            Do not add SMS recipients before your Twilio credentials are saved.
+          </strong>{" "}
+          Without credentials the message is routed to an internal test sink and
+          the delivery log will still show it as sent, so it will look like the
+          SMS went out when nothing left our servers. Email, Slack, and Discord
+          are unaffected. We are fixing this so the delivery is recorded as
+          skipped instead; until then, treat the credentials as a prerequisite.
         </p>
 
         <h3 style={styles.h3}>Where do Slack and Discord alerts go?</h3>
@@ -106,9 +132,11 @@ export default function Support() {
 
         <h3 style={styles.h3}>What happens when I uninstall?</h3>
         <p>
-          Access tokens and sessions are deleted immediately, and the rest of
-          your data is deleted when Shopify issues its <code>shop/redact</code>{" "}
-          request 48 hours later. See the{" "}
+          Every rule is disabled immediately, so no further alerts are sent and
+          no further data is collected. Your stored data — including access
+          tokens and sessions — is deleted when Shopify issues its{" "}
+          <code>shop/redact</code> request, which it sends 48 hours after
+          uninstall. Email us if you want it removed sooner. See the{" "}
           <Link to="/privacy">privacy policy</Link> for the full retention
           detail.
         </p>

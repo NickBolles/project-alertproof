@@ -86,6 +86,21 @@ export default function Privacy() {
             </tr>
             <tr>
               <td style={styles.td}>
+                The <strong>complete webhook payload</strong> Shopify sends for
+                each order event. Shopify includes customer details in these
+                payloads — typically customer name, email address, and shipping
+                address.
+              </td>
+              <td style={styles.td}>Shopify webhooks</td>
+              <td style={styles.td}>
+                Stored verbatim so a failed event can be retried and so a missed
+                event can be reconciled. Not read by the alerting logic, never
+                sent to a delivery provider, and{" "}
+                <strong>deleted after 30 days</strong> regardless of plan
+              </td>
+            </tr>
+            <tr>
+              <td style={styles.td}>
                 Recipient details the merchant enters: name, email address,
                 phone number, Slack and Discord webhook URLs
               </td>
@@ -108,10 +123,17 @@ export default function Privacy() {
           </tbody>
         </table>
         <p>
-          AlertProof does <strong>not</strong> request or store customer names,
-          customer email addresses, shipping addresses, or payment details. It
-          requests only the <code>read_orders</code>, <code>write_orders</code>,{" "}
-          <code>read_products</code>, and <code>read_inventory</code> scopes.
+          AlertProof requests only the <code>read_orders</code>,{" "}
+          <code>write_orders</code>, <code>read_products</code>, and{" "}
+          <code>read_inventory</code> scopes. It never requests customer,
+          payment, or storefront-visitor scopes, and it stores no payment
+          details of any kind.
+        </p>
+        <p>
+          Customer personal data does reach the service, but only inside the raw
+          webhook payloads described above. No feature reads it, no alert
+          contains it, and it is purged after 30 days. Alerts themselves are
+          built from order id, order name, and order value only.
         </p>
       </Section>
 
@@ -167,22 +189,33 @@ export default function Privacy() {
       <Section heading="How long it is kept">
         <ul style={styles.list}>
           <li>
-            Alert and delivery history follows the plan&apos;s retention window:{" "}
+            Delivery history follows the plan&apos;s retention window:{" "}
             {retention.free} days on Free, {retention.standard} days on
-            Standard, unlimited on Pro. Records past the window are deleted.
+            Standard, unlimited on Pro. Past the window, delivery records and
+            their provider events are deleted outright.
           </li>
           <li>
-            Raw webhook payloads are discarded after 30 days regardless of plan;
-            only the derived alert record remains.
+            The alert rows themselves are <em>not</em> deleted at the same time.
+            Past the retention window their order name and order value are
+            erased, leaving a skeleton — an internal id, the order id, the
+            timestamp, and deduplication metadata. The skeleton is what stops a
+            long-delayed webhook from re-alerting on an order you were already
+            told about, so it is kept for as long as the shop exists.
+          </li>
+          <li>
+            Raw webhook payloads — including the customer details Shopify puts
+            in them — are discarded after 30 days regardless of plan.
           </li>
           <li>
             Failed events kept for retry diagnosis are removed after 90 days.
           </li>
           <li>
-            On uninstall, the app&apos;s access token and sessions are deleted
-            immediately. Remaining store data is deleted when Shopify sends the{" "}
-            <code>shop/redact</code> request, which Shopify issues 48 hours
-            after uninstall.
+            On uninstall, the app is marked uninstalled and every alert rule is
+            disabled immediately, so no further data is collected and no further
+            alerts are sent. Stored data, including access tokens and sessions,
+            is deleted when Shopify sends the <code>shop/redact</code> request,
+            which Shopify issues 48 hours after uninstall. To have it removed
+            sooner, email the address below.
           </li>
         </ul>
       </Section>

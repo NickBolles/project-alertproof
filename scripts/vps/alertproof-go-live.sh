@@ -2,8 +2,12 @@
 # Flip AlertProof from mock/demo mode to real Shopify mode, then redeploy.
 #
 # Run this once the real client secret exists (launch plan B2). It prompts for
-# secrets rather than taking them as arguments, so nothing lands in shell
-# history or the process table.
+# secrets rather than taking them as arguments, and passes them onward through
+# the environment rather than argv, so nothing lands in shell history or in a
+# command line readable via /proc or `ps`.
+#
+# It refuses to disable mocks unless every credential is a real value. See the
+# validation block for why that matters.
 #
 #   /usr/local/bin/alertproof-go-live.sh
 #
@@ -14,12 +18,28 @@ ENV_FILE=/etc/vps-apps/alertproof.env
 APP_DIR=/opt/vps-apps/project-alertproof
 HOST=alertproof.nickbolles.com
 
+# Values that mean "nobody has filled this in yet". Checked before the script is
+# willing to disable mocks — see the guard block below.
+is_placeholder() {
+  case "$1" in
+    "" | dev-key | dev-secret | CHANGE_ME | CHANGE_ME_* | alerts@example.com) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+current_value() {
+  sed -n "s/^$1=//p" "$ENV_FILE" | tail -1
+}
+
+# The key and value go in through the environment, never argv: anything passed
+# as a command-line argument is readable by any other user on the box via /proc
+# or `ps` for as long as the process lives.
 set_key() {
   local key="$1" value="$2"
   if grep -q "^${key}=" "$ENV_FILE"; then
-    python3 - "$ENV_FILE" "$key" "$value" <<'PY'
-import sys
-path, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+    AP_ENV_FILE="$ENV_FILE" AP_KEY="$key" AP_VALUE="$value" python3 <<'PY'
+import os
+path, key, value = os.environ["AP_ENV_FILE"], os.environ["AP_KEY"], os.environ["AP_VALUE"]
 lines = open(path).read().splitlines()
 out = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in lines]
 open(path, "w").write("\n".join(out) + "\n")
@@ -49,17 +69,46 @@ read -rp "Verified EMAIL_FROM address (blank = leave unchanged): " email_from
 read -rp "SHOPIFY_APP_PRICING_URL (blank = leave unchanged): " pricing_url
 [ -n "$pricing_url" ] && set_key SHOPIFY_APP_PRICING_URL "$pricing_url"
 
+# Validate BEFORE disabling mocks. Turning mocks off is what makes the adapters
+# real, and every one of these values is selected on presence, not validity:
+# getAdapterMode treats ANY non-empty POSTMARK_API_TOKEN as "use Postmark", so a
+# leftover placeholder yields a deployment that passes /healthz while every
+# email is rejected by Postmark. Failing here leaves the app in working mock
+# mode, which is strictly better than a live app that silently drops alerts.
+echo "== validating =="
+blockers=()
+for key in SHOPIFY_API_SECRET POSTMARK_API_TOKEN EMAIL_FROM; do
+  value=$(current_value "$key")
+  if is_placeholder "$value"; then
+    blockers+=("$key is still a placeholder or empty")
+  else
+    echo "  $key looks real (${#value} chars)"
+  fi
+done
+
+if [ ${#blockers[@]} -gt 0 ]; then
+  echo >&2
+  echo "REFUSING to disable mocks — the app stays in mock mode:" >&2
+  printf '  - %s\n' "${blockers[@]}" >&2
+  echo >&2
+  echo "Re-run this script and supply every value. Nothing was changed except" >&2
+  echo "any values you just entered; the backup above has the previous state." >&2
+  exit 1
+fi
+
+if is_placeholder "$(current_value TWILIO_ACCOUNT_SID)"; then
+  echo "  NOTE: no app-level Twilio. SMS for any shop without its own BYO"
+  echo "        credentials falls back to the mock adapter and is recorded as"
+  echo "        SENT while nothing leaves the server. Do not enable SMS rules"
+  echo "        until credentials exist. (Tracked in the launch plan backlog.)"
+fi
+
 echo "== switching to real mode =="
 set_key AUTH_MODE shopify
 set_key ALERTPROOF_FORCE_MOCKS 0
 set_key ALERTPROOF_AUTH_BYPASS 0
 set_key NODE_ENV production
 chmod 600 "$ENV_FILE"
-
-if grep -q '^SHOPIFY_API_SECRET=dev-secret$' "$ENV_FILE"; then
-  echo "REFUSING: SHOPIFY_API_SECRET is still the literal placeholder." >&2
-  exit 1
-fi
 
 echo "== redeploying =="
 cd "$APP_DIR"
