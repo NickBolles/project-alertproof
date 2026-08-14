@@ -66,11 +66,6 @@
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
-  "workspaces": {
-    "packages": [
-      "extensions/*"
-    ]
-  },
   "overrides": {
     "p-map": "^4.0.0"
   }

@@ -147,3 +147,8 @@ The hardening pass already closed all BLOCKER/MAJOR gaps. Remaining, per each re
 ## 9. Verification the apps are sound (already done this session)
 
 All three: tests green (AlertProof 108, CheckoutWatch 110 + 7 Redis-only in CI, SKUForge 175), production web builds pass unsandboxed, Docker images build (`project-alertproof` 718 MB, `project-skuforge` 1.01 GB, CheckoutWatch web/worker via `docker compose build`). GitHub `main` is the source of truth for each; clone fresh on the VPS rather than copying local working trees.
+
+> ⚠️ **A local `npm test` is not full coverage.** AlertProof's 45 integration tests skip unless
+> `TEST_DATABASE_URL` points at a real PostgreSQL database, so a local run reports 63 passed /
+> 45 skipped and still exits 0. Only CI (which provisions Postgres 16) exercises all 108. Do not
+> read a green local run as a green suite.

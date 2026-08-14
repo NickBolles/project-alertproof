@@ -1,3 +1,5 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
 client_id = "926e44e19dcebedd5e9978ab4c99e3c7"
 name = "AlertProof"
 application_url = "https://alertproof.nickbolles.com"
@@ -7,21 +9,28 @@ embedded = true
 # Must stay false: `shopify app dev` would otherwise rewrite application_url to a
 # temporary tunnel and break the registered production OAuth/webhook endpoints.
 automatically_update_urls_on_dev = false
-include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-07"
 
-[[webhooks.subscriptions]]
-topics = ["app/uninstalled", "app_subscriptions/update", "inventory_levels/update", "orders/create", "orders/paid", "order_transactions/create", "refunds/create"]
-uri = "/webhooks/shopify"
-
-[[webhooks.subscriptions]]
-compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-uri = "/webhooks/shopify"
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shopify"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  topics = [
+  "app_subscriptions/update",
+  "app/uninstalled",
+  "inventory_levels/update",
+  "order_transactions/create",
+  "orders/create",
+  "orders/paid",
+  "refunds/create"
+]
 
 [access_scopes]
-scopes = "read_orders,write_orders,read_products,read_inventory"
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_inventory,read_orders,write_orders,read_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
 
 [auth]
-redirect_urls = ["https://alertproof.nickbolles.com/auth/callback"]
+redirect_urls = [ "https://alertproof.nickbolles.com/auth/callback" ]
